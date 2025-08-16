@@ -14,21 +14,33 @@ export class MailService {
     this.fromAddress = this.configService.get<string>('MAIL_FROM', this.configService.get<string>('GMAIL_USER', 'no-reply@example.com'));
 
     if (this.mailEnabled) {
-      const user = this.configService.get<string>('GMAIL_USER');
-      const pass = this.configService.get<string>('GMAIL_APP_PASSWORD');
+      // Prefer generic SMTP if provided
+      const smtpHost = this.configService.get<string>('SMTP_HOST');
+      const smtpPort = parseInt(this.configService.get<string>('SMTP_PORT', '587'), 10);
+      const smtpSecure = this.configService.get<string>('SMTP_SECURE', 'false') === 'true';
+      const smtpUser = this.configService.get<string>('SMTP_USER');
+      const smtpPass = this.configService.get<string>('SMTP_PASS');
 
-      if (!user || !pass) {
-        console.warn('MAIL_ENABLED=true but GMAIL_USER/GMAIL_APP_PASSWORD not set. Falling back to console transport.');
-        this.mailEnabled = false;
-      } else {
-        // Gmail SMTP using App Password (requires 2FA on the account)
+      if (smtpHost && smtpUser && smtpPass) {
         this.transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user,
-            pass,
-          },
+          host: smtpHost,
+          port: smtpPort,
+          secure: smtpSecure,
+          auth: { user: smtpUser, pass: smtpPass },
         });
+      } else {
+        // Fallback to Gmail SMTP using App Password (requires 2FA on the account)
+        const user = this.configService.get<string>('GMAIL_USER');
+        const pass = this.configService.get<string>('GMAIL_APP_PASSWORD');
+        if (!user || !pass) {
+          console.warn('MAIL_ENABLED=true but no SMTP or Gmail creds set. Falling back to console transport.');
+          this.mailEnabled = false;
+        } else {
+          this.transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: { user, pass },
+          });
+        }
       }
     }
 
