@@ -10,9 +10,9 @@ export class OtpService {
     return Math.floor(1000 + Math.random() * 9000).toString();
   }
 
-  async createOtp(email: string, code: string, expiresInMinutes = 10): Promise<any> {
-    // Normalize email to avoid key mismatches
-    const normalizedEmail = email.trim().toLowerCase();
+  // Generic create for arbitrary key (email/phone)
+  async createOtpForKey(key: string, code: string, expiresInMinutes = 10): Promise<any> {
+    const normalizedKey = key.trim().toLowerCase();
 
     const saltRounds = 10;
     const codeHash = await bcrypt.hash(code, saltRounds);
@@ -21,7 +21,7 @@ export class OtpService {
     expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
 
     const otp = {
-      email: normalizedEmail,
+      key: normalizedKey,
       codeHash,
       expiresAt,
       attempts: 0,
@@ -29,44 +29,44 @@ export class OtpService {
       createdAt: new Date(),
     };
 
-    this.otps.set(normalizedEmail, otp);
-    console.log(`📝 OTP stored for ${normalizedEmail}, expires at ${expiresAt.toISOString()}`);
+    this.otps.set(normalizedKey, otp);
+    console.log(`📝 OTP stored for ${normalizedKey}, expires at ${expiresAt.toISOString()}`);
     console.log(`📊 Total OTPs in memory: ${this.otps.size}`);
     console.log(`🔑 OTP map keys: ${JSON.stringify(Array.from(this.otps.keys()))}`);
     return otp;
   }
 
-  async verifyOtp(email: string, code: string): Promise<{ valid: boolean; message?: string }> {
-    // Normalize email to match stored key
-    const normalizedEmail = email.trim().toLowerCase();
+  // Generic verify for arbitrary key (email/phone)
+  async verifyOtpForKey(key: string, code: string): Promise<{ valid: boolean; message?: string }> {
+    const normalizedKey = key.trim().toLowerCase();
 
-    console.log(`🔍 Verifying OTP for ${normalizedEmail} with code ${code}`);
+    console.log(`🔍 Verifying OTP for ${normalizedKey} with code ${code}`);
     console.log(`📊 Total OTPs in memory before verify: ${this.otps.size}`);
     console.log(`🔑 OTP map keys: ${JSON.stringify(Array.from(this.otps.keys()))}`);
 
-    const otpRecord = this.otps.get(normalizedEmail);
-    console.log(`📋 OTP record found for ${normalizedEmail}:`, otpRecord ? 'YES' : 'NO');
+    const otpRecord = this.otps.get(normalizedKey);
+    console.log(`📋 OTP record found for ${normalizedKey}:`, otpRecord ? 'YES' : 'NO');
 
     if (!otpRecord || new Date() > otpRecord.expiresAt) {
       if (otpRecord) {
         console.log(`⏰ OTP expired at ${otpRecord.expiresAt.toISOString()}, now is ${new Date().toISOString()}`);
       }
-      this.otps.delete(normalizedEmail);
+      this.otps.delete(normalizedKey);
       return { valid: false, message: 'OTP not found or expired' };
     }
 
     if (otpRecord.attempts >= otpRecord.maxAttempts) {
-      console.log(`🚫 Max attempts exceeded for ${normalizedEmail}`);
+      console.log(`🚫 Max attempts exceeded for ${normalizedKey}`);
       return { valid: false, message: 'Maximum attempts exceeded' };
     }
 
     otpRecord.attempts += 1;
 
     const isValid = await bcrypt.compare(code, otpRecord.codeHash);
-    console.log(`✅ OTP validation result for ${normalizedEmail}: ${isValid}`);
+    console.log(`✅ OTP validation result for ${normalizedKey}: ${isValid}`);
 
     if (isValid) {
-      this.otps.delete(normalizedEmail);
+      this.otps.delete(normalizedKey);
       return { valid: true };
     }
 
@@ -80,5 +80,23 @@ export class OtpService {
         this.otps.delete(email);
       }
     }
+  }
+
+  // Back-compat helpers for email
+  async createOtp(email: string, code: string, expiresInMinutes = 10): Promise<any> {
+    return this.createOtpForKey(email, code, expiresInMinutes);
+  }
+
+  async verifyOtp(email: string, code: string): Promise<{ valid: boolean; message?: string }> {
+    return this.verifyOtpForKey(email, code);
+  }
+
+  // Convenience helpers for phone numbers
+  async createOtpForPhone(phone: string, code: string, expiresInMinutes = 10): Promise<any> {
+    return this.createOtpForKey(phone, code, expiresInMinutes);
+  }
+
+  async verifyOtpForPhone(phone: string, code: string): Promise<{ valid: boolean; message?: string }> {
+    return this.verifyOtpForKey(phone, code);
   }
 }
