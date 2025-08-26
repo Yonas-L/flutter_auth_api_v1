@@ -1,12 +1,16 @@
 import { Body, Controller, Headers, HttpException, HttpStatus, Post } from '@nestjs/common';
 import { OtpService } from './otp.service';
+import { SupabaseAuthService } from './supabase-auth.service';
 
 interface SendOtpBody { phoneNumber: string }
 interface VerifyOtpBody { phoneNumber: string; otp: string; deviceId?: string; name?: string }
 
 @Controller('otp')
 export class OtpController {
-  constructor(private readonly otpService: OtpService) {}
+  constructor(
+    private readonly otpService: OtpService,
+    private readonly supaAuth: SupabaseAuthService,
+  ) {}
 
   private requireBearer(@Headers('authorization') authHeader?: string) {
     const expected = process.env.SMS_TOKEN;
@@ -77,8 +81,14 @@ export class OtpController {
       throw new HttpException(result.message || 'Invalid OTP', HttpStatus.BAD_REQUEST);
     }
 
-    // TODO: integrate Supabase to issue a refresh token for the user account
-    // For now, return a placeholder so the mobile app error shows clear message
-    return { message: 'OTP verified. Backend must return Supabase refreshToken next.' };
+    // Create/fetch Supabase user for this phone and issue tokens
+    const tokens = await this.supaAuth.createOrGetTokens(phone, body?.name);
+    return {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      tokenType: tokens.tokenType,
+      expiresIn: tokens.expiresIn,
+      user: tokens.user ?? undefined,
+    };
   }
 }
