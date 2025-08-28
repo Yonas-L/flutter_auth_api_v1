@@ -103,7 +103,8 @@ export class OtpController {
 
       const url = new URL(apiUrl);
       url.searchParams.set('from', from);
-      if (sender) url.searchParams.set('sender', sender);
+      // Temporarily remove sender parameter until approved
+      // if (sender) url.searchParams.set('sender', sender);
       url.searchParams.set('to', normalizedPhone);
       url.searchParams.set('message', message);
 
@@ -124,7 +125,7 @@ export class OtpController {
         // Send SMS via AfroMessage
         this.logger.log(`[DEBUG] Making AfroMessage request to: ${url.toString()}`);
         this.logger.log(`[DEBUG] Authorization header: Bearer ${afroToken.substring(0, 20)}...`);
-        
+
         const resp = await fetch(url.toString(), {
           method: 'GET',
           headers: {
@@ -146,7 +147,7 @@ export class OtpController {
           this.logger.error(`[ERROR] AfroMessage failed: ${JSON.stringify(responseData)}`);
           throw new HttpException(`SMS service error: ${responseData.response?.message || responseData.response?.errors || 'Unknown error'}`, HttpStatus.BAD_GATEWAY);
         }
-        
+
         this.logger.log(`[SUCCESS] AfroMessage SMS sent successfully! Message ID: ${responseData.response?.message_id}`);
       }
 
