@@ -111,8 +111,15 @@ export class OtpController {
 
       if (!afroToken) {
         // Development mode: skip external call
+        this.logger.error(`[ERROR] AFRO_SMS_KEY is empty or undefined - SMS will not be sent!`);
+        this.logger.error(`[ERROR] Environment variables: AFRO_SMS_KEY=${process.env.AFRO_SMS_KEY}`);
+        this.logger.error(`[ERROR] All env vars: ${JSON.stringify({
+          AFRO_SMS_KEY: process.env.AFRO_SMS_KEY ? 'SET' : 'NOT SET',
+          AFRO_FROM: process.env.AFRO_FROM,
+          AFRO_SENDER: process.env.AFRO_SENDER,
+          NODE_ENV: process.env.NODE_ENV
+        })}`);
         this.logger.warn(`[DEV] Skipping AfroMessage send. Phone=${normalizedPhone} Code=${code} Message="${message}"`);
-        this.logger.warn(`[DEV] AFRO_SMS_KEY is empty or undefined`);
       } else {
         // Send SMS via AfroMessage
         const resp = await fetch(url.toString(), {
@@ -135,6 +142,8 @@ export class OtpController {
         if (responseData.acknowledge !== 'success') {
           throw new HttpException(`SMS service error: ${responseData.response?.message || 'Unknown error'}`, HttpStatus.BAD_GATEWAY);
         }
+        
+        this.logger.log(`[SUCCESS] AfroMessage SMS sent successfully! Message ID: ${responseData.response?.message_id}`);
       }
 
       // Store OTP in database
