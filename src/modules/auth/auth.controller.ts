@@ -11,7 +11,7 @@ export class AuthController {
   constructor(
     private authService: AuthService,
     private usersService: UsersService,
-  ) {}
+  ) { }
 
   @Post('otp/request')
   async requestOtp(@Body() requestOtpDto: RequestOtpDto) {
@@ -21,6 +21,16 @@ export class AuthController {
   @Post('otp/verify')
   async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto) {
     return this.authService.verifyOtp(verifyOtpDto.email, verifyOtpDto.code);
+  }
+
+  @Post('otp/request-phone')
+  async requestOtpForPhone(@Body() body: { phoneNumber: string }) {
+    return this.authService.requestOtpForPhone(body.phoneNumber);
+  }
+
+  @Post('otp/verify-phone')
+  async verifyOtpForPhone(@Body() body: { phoneNumber: string; code: string }) {
+    return this.authService.verifyOtpForPhone(body.phoneNumber, body.code);
   }
 
   @Post('refresh')

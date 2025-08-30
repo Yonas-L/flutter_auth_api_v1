@@ -8,6 +8,10 @@ export class UsersService {
     return Array.from(this.users.values()).find(user => user.email === email) || null;
   }
 
+  async findByPhone(phoneNumber: string): Promise<any | null> {
+    return Array.from(this.users.values()).find(user => user.phoneNumber === phoneNumber) || null;
+  }
+
   async create(userData: any): Promise<any> {
     const user = {
       _id: Date.now().toString(),
