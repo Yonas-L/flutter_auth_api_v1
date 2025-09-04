@@ -1,0 +1,223 @@
+import {
+    Controller,
+    Get,
+    Post,
+    Put,
+    Body,
+    Param,
+    Query,
+    UseGuards,
+    Request,
+    HttpStatus,
+    HttpException,
+    Logger,
+} from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { UsersService } from './users.service';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
+import { UserResponseDto, RegistrationProgressDto } from './dto/user-response.dto';
+import { DriverProfilesService } from '../driver-profiles/driver-profiles.service';
+
+@Controller('api/users')
+export class UsersController {
+    private readonly logger = new Logger(UsersController.name);
+
+    constructor(
+        private readonly usersService: UsersService,
+        private readonly driverProfilesService: DriverProfilesService,
+    ) { }
+
+    /**
+     * Get current user profile (requires authentication)
+     */
+    @Get('profile')
+    @UseGuards(AuthGuard('jwt'))
+    async getCurrentUserProfile(@Request() req: any): Promise<UserResponseDto> {
+        try {
+            const userId = req.user.id;
+            const user = await this.usersService.findById(userId);
+
+            if (!user) {
+                throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+            }
+
+            return new UserResponseDto(user);
+        } catch (error) {
+            this.logger.error('Error getting user profile:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update current user profile (requires authentication)
+     */
+    @Put('profile')
+    @UseGuards(AuthGuard('jwt'))
+    async updateCurrentUserProfile(
+        @Request() req: any,
+        @Body() updateUserDto: UpdateUserDto,
+    ): Promise<UserResponseDto> {
+        try {
+            const userId = req.user.id;
+            const updatedUser = await this.usersService.updateById(userId, updateUserDto);
+
+            if (!updatedUser) {
+                throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+            }
+
+            return new UserResponseDto(updatedUser);
+        } catch (error) {
+            this.logger.error('Error updating user profile:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Create a new user (admin or system use)
+     */
+    @Post()
+    async createUser(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
+        try {
+            const user = await this.usersService.create(createUserDto);
+            return new UserResponseDto(user);
+        } catch (error) {
+            this.logger.error('Error creating user:', error);
+            if (error.message.includes('duplicate') || error.message.includes('unique')) {
+                throw new HttpException('User already exists', HttpStatus.CONFLICT);
+            }
+            throw new HttpException('Failed to create user', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Get user by ID (admin use)
+     */
+    @Get(':id')
+    async getUserById(@Param('id') id: string): Promise<UserResponseDto> {
+        try {
+            const user = await this.usersService.findById(id);
+
+            if (!user) {
+                throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+            }
+
+            return new UserResponseDto(user);
+        } catch (error) {
+            this.logger.error(`Error getting user ${id}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Find user by phone number
+     */
+    @Get('phone/:phoneNumber')
+    async getUserByPhone(@Param('phoneNumber') phoneNumber: string): Promise<UserResponseDto> {
+        try {
+            // Normalize phone number
+            const normalizedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+
+            const user = await this.usersService.findByPhone(normalizedPhone);
+
+            if (!user) {
+                throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+            }
+
+            return new UserResponseDto(user);
+        } catch (error) {
+            this.logger.error(`Error getting user by phone ${phoneNumber}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Find user by email
+     */
+    @Get('email/:email')
+    async getUserByEmail(@Param('email') email: string): Promise<UserResponseDto> {
+        try {
+            const user = await this.usersService.findByEmail(email);
+
+            if (!user) {
+                throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+            }
+
+            return new UserResponseDto(user);
+        } catch (error) {
+            this.logger.error(`Error getting user by email ${email}:`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * Check if phone number is registered
+     */
+    @Get('check/phone/:phoneNumber')
+    async checkPhoneRegistration(@Param('phoneNumber') phoneNumber: string): Promise<{ exists: boolean }> {
+        try {
+            // Normalize phone number
+            const normalizedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+${phoneNumber}`;
+
+            const exists = await this.usersService.isPhoneRegistered(normalizedPhone);
+            return { exists };
+        } catch (error) {
+            this.logger.error(`Error checking phone registration ${phoneNumber}:`, error);
+            throw new HttpException('Failed to check phone registration', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+ * Get registration progress for current user
+ */
+    @Get('registration/progress')
+    @UseGuards(AuthGuard('jwt'))
+    async getRegistrationProgress(@Request() req: any): Promise<RegistrationProgressDto> {
+        try {
+            const userId = req.user.id;
+
+            // Get driver-specific registration progress
+            const driverProgress = await this.driverProfilesService.getRegistrationProgress(userId);
+
+            // Convert to generic registration progress format
+            return new RegistrationProgressDto({
+                hasProfile: driverProgress.hasProfile,
+                hasVehicle: driverProgress.hasVehicle,
+                isComplete: driverProgress.isComplete,
+                verificationStatus: driverProgress.verificationStatus,
+                nextStep: driverProgress.nextStep,
+            });
+        } catch (error) {
+            this.logger.error('Error getting registration progress:', error);
+            throw new HttpException('Failed to get registration progress', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Update user's last login timestamp
+     */
+    @Post(':id/login')
+    async updateLastLogin(@Param('id') id: string): Promise<{ success: boolean }> {
+        try {
+            await this.usersService.updateLastLogin(id);
+            return { success: true };
+        } catch (error) {
+            this.logger.error(`Error updating last login for user ${id}:`, error);
+            throw new HttpException('Failed to update last login', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    /**
+     * Create or update user (upsert operation)
+     */
+    @Post('upsert')
+    async upsertUser(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
+        try {
+            const user = await this.usersService.upsertUser(createUserDto);
+            return new UserResponseDto(user);
+        } catch (error) {
+            this.logger.error('Error upserting user:', error);
+            throw new HttpException('Failed to upsert user', HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+}

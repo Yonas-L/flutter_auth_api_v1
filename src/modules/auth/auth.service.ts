@@ -43,13 +43,16 @@ export class AuthService {
     if (!user) {
       user = await this.usersService.create({
         email,
-        role: 'driver',
         status: 'active',
+        is_email_verified: true,
       });
     }
 
+    // Update last login
+    await this.usersService.updateLastLogin(user.id);
+
     // Generate tokens
-    const payload = { email: user.email, sub: user._id };
+    const payload = { email: user.email, sub: user.id };
     const accessToken = this.jwtService.sign(payload);
     const refreshToken = this.jwtService.sign(payload, {
       secret: this.configService.get('JWT_REFRESH_SECRET'),
@@ -60,10 +63,10 @@ export class AuthService {
       accessToken,
       refreshToken,
       user: {
-        id: user._id,
+        id: user.id,
         email: user.email,
-        name: user.name,
-        role: user.role,
+        name: user.display_name,
+        role: 'driver', // Default role for now
         status: user.status,
       },
     };
@@ -80,7 +83,7 @@ export class AuthService {
         throw new UnauthorizedException('User not found');
       }
 
-      const newPayload = { email: user.email, sub: user._id };
+      const newPayload = { email: user.email, sub: user.id };
       const accessToken = this.jwtService.sign(newPayload);
 
       return { accessToken };
@@ -118,14 +121,17 @@ export class AuthService {
     let user = await this.usersService.findByPhone(phoneNumber);
     if (!user) {
       user = await this.usersService.create({
-        phoneNumber,
-        role: 'driver',
+        phone_e164: phoneNumber,
         status: 'active',
+        is_phone_verified: true,
       });
     }
 
+    // Update last login
+    await this.usersService.updateLastLogin(user.id);
+
     // Generate tokens
-    const payload = { phoneNumber: user.phoneNumber, sub: user._id };
+    const payload = { phoneNumber: user.phone_e164, sub: user.id };
     const accessToken = this.jwtService.sign(payload);
     const refreshToken = this.jwtService.sign(payload, {
       secret: this.configService.get('JWT_REFRESH_SECRET'),
@@ -136,10 +142,10 @@ export class AuthService {
       accessToken,
       refreshToken,
       user: {
-        id: user._id,
-        phoneNumber: user.phoneNumber,
-        name: user.name,
-        role: user.role,
+        id: user.id,
+        phoneNumber: user.phone_e164,
+        name: user.display_name,
+        role: 'driver', // Default role for now
         status: user.status,
       },
     };

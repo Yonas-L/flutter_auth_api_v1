@@ -5,8 +5,12 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
+import { DriverProfilesModule } from './modules/driver-profiles/driver-profiles.module';
+import { VehiclesModule } from './modules/vehicles/vehicles.module';
+import { DocumentsModule } from './modules/documents/documents.module';
 import { OtpModule } from './modules/otp/otp.module';
 import { MailModule } from './modules/mail/mail.module';
+import { DatabaseModule } from './modules/database/database.module';
 
 @Module({
   imports: [
@@ -20,12 +24,16 @@ import { MailModule } from './modules/mail/mail.module';
     //     w: 'majority',
     //   }),
     // }),
+    DatabaseModule,
     AuthModule,
     UsersModule,
+    DriverProfilesModule,
+    VehiclesModule,
+    DocumentsModule,
     OtpModule,
     MailModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, HttpException, HttpStatus, Post, Logger } from '@nestjs/common';
+import { Body, Controller, Headers, HttpException, HttpStatus, Post, Get, Logger } from '@nestjs/common';
 import { OtpService } from './otp.service';
 import { SupabaseAuthService } from './supabase-auth.service';
 
@@ -225,6 +225,22 @@ export class OtpController {
         throw error;
       }
       throw new HttpException('Failed to verify OTP', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  @Get('stats')
+  async getStats(@Headers('authorization') auth?: string) {
+    this.requireBearer(auth);
+
+    try {
+      const stats = await this.otpService.getOtpStats();
+      return {
+        success: true,
+        data: stats
+      };
+    } catch (error) {
+      this.logger.error('Error getting OTP stats:', error);
+      throw new HttpException('Failed to get OTP stats', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 }

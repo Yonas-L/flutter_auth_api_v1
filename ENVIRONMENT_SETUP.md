@@ -5,15 +5,15 @@
 Create a `.env` file in the `backend/server/` directory with the following variables:
 
 ```bash
-# AfroMessage Configuration (Your NEW Credentials)
-AFRO_SMS_KEY=eyJhbGciOiJIUzI1NiJ9.eyJpZGVudGlmaWVyIjoiQ0lyeEoxb3pTNE5lZ0Z5aE1sRlVjYmRaTGw1bmhKS00iLCJleHAiOjE5MTQzMTI2ODYsImlhdCI6MTc1NjU0NjI4NiwianRpIjoiMGVlNTJmMzAtNjRlMS00Njg3LTkwNDItMDhkODkzNzM1ZjQwIn0.EUdlIGRb7W2T5yr2WE6scHLOUkn2TQct3EexsM4JpYc
+# AfroMessage Configuration (Your Credentials - LATEST)
+AFRO_SMS_KEY=eyJhbGciOiJIUzI1NiJ9.eyJpZGVudGlmaWVyIjoiNUIzTlVFdEtSWUJyUHBaVTc2YzZvakk1UFhoRXIyS2MiLCJleHAiOjE5MTQ1Njg2MzAsImlhdCI6MTc1NjgwMjIzMCwianRpIjoiZGE5YzA3MTctMTRjYi00NDA5LWJhOGMtZjNjMTM2NDA3ZjVlIn0.15cCvFCA8BBv2rSQMemFsjMpRd7N-Jqs0_NcQcMXFnw
 AFRO_FROM=e80ad9d8-adf3-463f-80f4-7c4b39f7f164
 AFRO_SENDER=AradaTransport
 AFRO_PR=Your Arada Transport verification code is
 AFRO_PS=valid for 10 minutes
 
 # Security
-SMS_TOKEN=eyJhbGciOiJIUzI1NiJ9.eyJpZGVudGlmaWVyIjoiQ0lyeEoxb3pTNE5lZ0Z5aE1sRlVjYmRaTGw1bmhKS00iLCJleHAiOjE5MTQzMTI2ODYsImlhdCI6MTc1NjU0NjI4NiwianRpIjoiMGVlNTJmMzAtNjRlMS00Njg3LTkwNDItMDhkODkzNzM1ZjQwIn0.EUdlIGRb7W2T5yr2WE6scHLOUkn2TQct3EexsM4JpYc
+SMS_TOKEN=your_bearer_token_for_api_security
 
 # Supabase Configuration (Legacy Keys - Current Implementation)
 SUPABASE_URL=https://feesvwfnxhyiovmzrtfr.supabase.co
@@ -43,7 +43,7 @@ NODE_ENV=production
 ## AfroMessage Configuration Details
 
 ### Your AfroMessage Credentials:
-- **API Token**: `eyJhbGciOiJIUzI1NiJ9.eyJpZGVudGlmaWVyIjoiQ0lyeEoxb3pTNE5lZ0Z5aE1sRlVjYmRaTGw1bmhKS00iLCJleHAiOjE5MTQzMTI2ODYsImlhdCI6MTc1NjU0NjI4NiwianRpIjoiMGVlNTJmMzAtNjRlMS00Njg3LTkwNDItMDhkODkzNzM1ZjQwIn0.EUdlIGRb7W2T5yr2WE6scHLOUkn2TQct3EexsM4JpYc`
+- **API Token**: `eyJhbGciOiJIUzI1NiJ9.eyJpZGVudGlmaWVyIjoiNUIzTlVFdEtSWUJyUHBaVTc2YzZvakk1UFhoRXIyS2MiLCJleHAiOjE5MTQ1Njg2MzAsImlhdCI6MTc1NjgwMjIzMCwianRpIjoiZGE5YzA3MTctMTRjYi00NDA5LWJhOGMtZjNjMTM2NDA3ZjVlIn0.15cCvFCA8BBv2rSQMemFsjMpRd7N-Jqs0_NcQcMXFnw`
 - **Valid Until**: August 28, 2030, 2:28:30 PM
 - **Identifier ID**: `e80ad9d8-adf3-463f-80f4-7c4b39f7f164`
 - **Sender Name**: `AradaTransport`
@@ -58,7 +58,7 @@ NODE_ENV=production
 
 ### Test AfroMessage API:
 ```bash
-curl -XGET -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJpZGVudGlmaWVyIjoiQ0lyeEoxb3pTNE5lZ0Z5aE1sRlVjYmRaTGw1bmhKS00iLCJleHAiOjE5MTQzMTI2ODYsImlhdCI6MTc1NjU0NjI4NiwianRpIjoiMGVlNTJmMzAtNjRlMS00Njg3LTkwNDItMDhkODkzNzM1ZjQwIn0.EUdlIGRb7W2T5yr2WE6scHLOUkn2TQct3EexsM4JpYc' \
+curl -XGET -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJpZGVudGlmaWVyIjoiNUIzTlVFdEtSWUJyUHBaVTc2YzZvakk1UFhoRXIyS2MiLCJleHAiOjE5MTQ1Njg2MzAsImlhdCI6MTc1NjgwMjIzMCwianRpIjoiZGE5YzA3MTctMTRjYi00NDA5LWJhOGMtZjNjMTM2NDA3ZjVlIn0.15cCvFCA8BBv2rSQMemFsjMpRd7N-Jqs0_NcQcMXFnw' \
     -H "Content-type: application/json" \
     'https://api.afromessage.com/api/challenge?from=e80ad9d8-adf3-463f-80f4-7c4b39f7f164&sender=AradaTransport&to=+251912345678&len=4&t=0&ttl=600&pr=Your Arada Transport verification code is&ps=valid for 10 minutes'
 ```
