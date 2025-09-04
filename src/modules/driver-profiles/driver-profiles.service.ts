@@ -17,7 +17,7 @@ export class DriverProfilesService {
     private readonly usersRepository: UsersRepository,
     private readonly vehiclesRepository: VehiclesRepository,
     private readonly documentsRepository: DocumentsRepository,
-  ) {}
+  ) { }
 
   /**
    * Create a new driver profile
@@ -38,7 +38,7 @@ export class DriverProfilesService {
 
       // Create the profile
       const profile = await this.driverProfilesRepository.create(createDriverProfileDto);
-      
+
       this.logger.log(`✅ Driver profile created successfully: ${profile.id}`);
       return new DriverProfileResponseDto(profile);
     } catch (error) {
@@ -98,7 +98,7 @@ export class DriverProfilesService {
       if (!profile) {
         throw new NotFoundException('Driver profile not found');
       }
-      
+
       this.logger.log(`✅ Driver profile updated successfully: ${id}`);
       return new DriverProfileResponseDto(profile);
     } catch (error) {
