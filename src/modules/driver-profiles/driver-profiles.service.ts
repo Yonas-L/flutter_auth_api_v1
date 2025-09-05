@@ -174,8 +174,8 @@ export class DriverProfilesService {
       // Check verification status
       const verificationStatus = profile?.verification_status || 'unverified';
 
-      // Determine if registration is complete
-      const isComplete = hasProfile && hasVehicle && hasDocuments && verificationStatus === 'verified';
+      // Determine if registration is complete (all steps filled, regardless of verification)
+      const isComplete = hasProfile && hasVehicle && hasDocuments;
 
       // Identify missing fields
       const missingFields: string[] = [];
