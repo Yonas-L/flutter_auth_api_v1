@@ -182,28 +182,53 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
      */
     async upsert(userData: CreateUserData): Promise<User> {
         try {
-            // First, try to find existing user by phone or email
+            this.logger.log(`Upserting user with data: ${JSON.stringify(userData)}`);
+            
+            // First, try to find existing user by ID (if provided), phone, or email
             let existingUser: User | null = null;
 
-            if (userData.phone_e164) {
+            // Check by ID first (most specific)
+            if (userData.id) {
+                existingUser = await this.findById(userData.id);
+                this.logger.log(`Found user by ID ${userData.id}: ${!!existingUser}`);
+            }
+
+            // If not found by ID, check by phone
+            if (!existingUser && userData.phone_e164) {
                 existingUser = await this.findByPhone(userData.phone_e164);
-            } else if (userData.email) {
+                this.logger.log(`Found user by phone ${userData.phone_e164}: ${!!existingUser}`);
+            }
+
+            // If still not found, check by email
+            if (!existingUser && userData.email) {
                 existingUser = await this.findByEmail(userData.email);
+                this.logger.log(`Found user by email ${userData.email}: ${!!existingUser}`);
             }
 
             if (existingUser) {
-                // Update existing user
-                const updatedUser = await this.update(existingUser.id, userData);
+                // Update existing user - use the existing user's ID
+                this.logger.log(`Updating existing user: ${existingUser.id}`);
+                const updateData = { ...userData };
+                delete updateData.id; // Don't try to update the ID
+                
+                const updatedUser = await this.update(existingUser.id, updateData);
                 if (!updatedUser) {
                     throw new Error('Failed to update existing user');
                 }
                 return updatedUser;
             } else {
                 // Create new user
+                this.logger.log(`Creating new user with ID: ${userData.id}`);
                 return await this.create(userData);
             }
         } catch (error) {
             this.logger.error('Error upserting user:', error);
+            this.logger.error('Error details:', {
+                message: error.message,
+                code: error.code,
+                hint: error.hint,
+                details: error.details,
+            });
             throw error;
         }
     }

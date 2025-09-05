@@ -213,11 +213,28 @@ export class UsersController {
     @Post('upsert')
     async upsertUser(@Body() createUserDto: CreateUserDto): Promise<UserResponseDto> {
         try {
+            this.logger.log(`Attempting to upsert user: ${JSON.stringify(createUserDto)}`);
             const user = await this.usersService.upsertUser(createUserDto);
+            this.logger.log(`User upserted successfully: ${user.id}`);
             return new UserResponseDto(user);
         } catch (error) {
             this.logger.error('Error upserting user:', error);
-            throw new HttpException('Failed to upsert user', HttpStatus.INTERNAL_SERVER_ERROR);
+            this.logger.error('Error details:', {
+                message: error.message,
+                stack: error.stack,
+                userData: createUserDto,
+            });
+            
+            // Provide more specific error messages
+            if (error.message?.includes('duplicate key') || error.code === '23505') {
+                throw new HttpException('User already exists with this phone or email', HttpStatus.CONFLICT);
+            } else if (error.message?.includes('RLS') || error.message?.includes('policy')) {
+                throw new HttpException('Database access denied - check RLS policies', HttpStatus.FORBIDDEN);
+            } else if (error.message?.includes('connection') || error.code === 'PGRST301') {
+                throw new HttpException('Database connection error', HttpStatus.SERVICE_UNAVAILABLE);
+            } else {
+                throw new HttpException(`Failed to upsert user: ${error.message}`, HttpStatus.INTERNAL_SERVER_ERROR);
+            }
         }
     }
 }
