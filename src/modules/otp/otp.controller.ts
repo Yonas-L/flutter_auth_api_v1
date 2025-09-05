@@ -258,29 +258,20 @@ export class OtpController {
 
     // Normalize phone number
     const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
-    
+
     // Create a mock OTP verification for development
     this.logger.log(`🔧 DEV LOGIN: Bypassing OTP for ${normalizedPhone}`);
-    
-    try {
-      // Create or get user in Supabase
-      const { data: user, error } = await this.supaAuth.createOrGetUser(normalizedPhone);
-      
-      if (error) {
-        this.logger.error('Dev login failed:', error);
-        throw new HttpException('Dev login failed', HttpStatus.INTERNAL_SERVER_ERROR);
-      }
 
+    try {
+      // Create or get user in Supabase and get tokens
+      const tokenResponse = await this.supaAuth.createOrGetTokens(normalizedPhone);
+      
       return {
         success: true,
         message: 'Development login successful',
-        user: {
-          id: user.id,
-          phone: user.phone,
-          email: user.email,
-        },
-        accessToken: user.access_token,
-        refreshToken: user.refresh_token,
+        user: tokenResponse.user,
+        accessToken: tokenResponse.accessToken,
+        refreshToken: tokenResponse.refreshToken,
       };
     } catch (error) {
       this.logger.error('Dev login error:', error);

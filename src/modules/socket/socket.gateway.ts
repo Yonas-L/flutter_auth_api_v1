@@ -30,10 +30,14 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private supabase;
 
     constructor(private jwtService: JwtService) {
-        this.supabase = createClient(
-            process.env.SUPABASE_URL,
-            process.env.SUPABASE_SERVICE_ROLE_KEY
-        );
+        const supabaseUrl = process.env.SUPABASE_URL;
+        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        
+        if (!supabaseUrl || !supabaseKey) {
+            throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
+        }
+        
+        this.supabase = createClient(supabaseUrl, supabaseKey);
     }
 
     async handleConnection(client: Socket) {
@@ -49,7 +53,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
             // Verify Supabase JWT token
             const { data: { user }, error } = await this.supabase.auth.getUser(token);
-            
+
             if (error || !user) {
                 this.logger.warn(`Connection rejected: Invalid Supabase token for ${client.id}: ${error?.message}`);
                 client.disconnect();
