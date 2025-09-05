@@ -95,17 +95,17 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         if (authClient.userId) {
             // Remove from connected drivers
             this.connectedDrivers.delete(authClient.userId);
-            
+
             // Remove from available drivers
             this.availableDrivers.delete(authClient.userId);
-            
+
             // Update database - set offline
             await this.updateDriverStatus(authClient.userId, {
                 is_online: false,
                 is_available: false,
                 socket_id: null
             });
-            
+
             this.logger.log(`Driver ${authClient.userId} disconnected`);
         }
     }
@@ -152,18 +152,18 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 // Add to available drivers
                 this.availableDrivers.set(userId, client);
                 await client.join('available_drivers');
-                
+
                 // Update location if provided
                 if (location) {
                     await this.updateDriverLocation(userId, location);
                 }
-                
+
                 this.logger.log(`Driver ${userId} is now available`);
             } else {
                 // Remove from available drivers
                 this.availableDrivers.delete(userId);
                 await client.leave('available_drivers');
-                
+
                 this.logger.log(`Driver ${userId} is no longer available`);
             }
 
@@ -246,7 +246,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         try {
             // Convert lat/lng to PostGIS geography point
             const locationPoint = `POINT(${location.lng} ${location.lat})`;
-            
+
             const { error } = await this.supabase
                 .from('driver_profiles')
                 .update({
