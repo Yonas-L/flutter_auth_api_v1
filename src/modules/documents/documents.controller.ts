@@ -31,13 +31,14 @@ import {
     DocumentVerificationDto,
     DocumentUploadResponseDto
 } from './dto/document-response.dto';
+import { createClient } from '@supabase/supabase-js';
+import * as fs from 'fs';
 
-// Configure multer for file storage
+// Configure multer for memory storage (we'll upload to Supabase)
 const storage = diskStorage({
     destination: (req, file, cb) => {
-        // Create uploads directory structure
-        const uploadPath = join(process.cwd(), 'uploads', 'documents');
-        cb(null, uploadPath);
+        // Use memory storage since we'll upload to Supabase
+        cb(null, '/tmp');
     },
     filename: (req, file, cb) => {
         // Generate unique filename
@@ -50,11 +51,18 @@ const storage = diskStorage({
 @Controller('api/documents')
 export class DocumentsController {
     private readonly logger = new Logger(DocumentsController.name);
+    private readonly supabase;
 
-    constructor(private readonly documentsService: DocumentsService) { }
+    constructor(private readonly documentsService: DocumentsService) {
+        // Initialize Supabase client
+        this.supabase = createClient(
+            process.env.SUPABASE_URL!,
+            process.env.SUPABASE_SERVICE_ROLE_KEY!
+        );
+    }
 
     /**
-     * Upload a single document
+     * Upload a single document to Supabase Storage
      */
     @Post('upload')
     @UseGuards(AuthGuard('jwt'))
@@ -75,18 +83,52 @@ export class DocumentsController {
                 throw new HttpException(validation.error || 'Invalid file', HttpStatus.BAD_REQUEST);
             }
 
+            // Generate unique filename
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            const extension = extname(file.originalname);
+            const fileName = `${uploadDto.doc_type}-${uniqueSuffix}${extension}`;
+
+            // Create Supabase Storage path: uploads/userId/documents/filename
+            const storagePath = `${uploadDto.user_id}/documents/${fileName}`;
+
+            // Upload to Supabase Storage
+            const { data: uploadData, error: uploadError } = await this.supabase.storage
+                .from('uploads')
+                .upload(storagePath, file.buffer, {
+                    contentType: file.mimetype,
+                    upsert: false
+                });
+
+            if (uploadError) {
+                this.logger.error('Supabase upload error:', uploadError);
+                throw new HttpException('Failed to upload file to storage', HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+
+            // Get public URL
+            const { data: publicUrlData } = this.supabase.storage
+                .from('uploads')
+                .getPublicUrl(storagePath);
+
             // Create document record
             const createDocumentDto: CreateDocumentDto = {
                 user_id: uploadDto.user_id,
                 doc_type: uploadDto.doc_type,
-                file_path: file.path,
+                file_path: storagePath, // Store Supabase path instead of local path
                 file_name: file.originalname,
                 file_size_bytes: file.size,
                 mime_type: file.mimetype,
+                public_url: publicUrlData.publicUrl,
                 notes: uploadDto.notes,
             };
 
             const document = await this.documentsService.create(createDocumentDto);
+
+            // Clean up temporary file
+            try {
+                fs.unlinkSync(file.path);
+            } catch (cleanupError) {
+                this.logger.warn('Failed to cleanup temp file:', cleanupError);
+            }
 
             return new DocumentUploadResponseDto({
                 id: document.id,
@@ -116,48 +158,88 @@ export class DocumentsController {
     @UseInterceptors(FilesInterceptor('files', 10, { storage }))
     async uploadMultipleDocuments(
         @Request() req: any,
-        @UploadedFiles() files: Array<Express.Multer.File>,
-        @Body() uploadDto: any, // Will contain file metadata
+        @UploadedFiles() files: Express.Multer.File[],
+        @Body() uploadDto: any,
     ): Promise<DocumentUploadResponseDto[]> {
         try {
             if (!files || files.length === 0) {
                 throw new HttpException('No files uploaded', HttpStatus.BAD_REQUEST);
             }
 
-            const documentPromises = files.map(async (file, index) => {
-                // Validate each file
-                const docType = uploadDto[`doc_type_${index}`] || 'other';
+            const uploadedDocuments: DocumentUploadResponseDto[] = [];
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const docType = uploadDto[`doc_type_${i}`] || 'other';
+                const notes = uploadDto[`notes_${i}`] || null;
+
+                // Validate file upload
                 const validation = this.documentsService.validateFileUpload(file, docType);
                 if (!validation.valid) {
-                    throw new HttpException(`File ${file.originalname}: ${validation.error || 'Invalid file'}`, HttpStatus.BAD_REQUEST);
+                    this.logger.warn(`Skipping invalid file ${file.originalname}: ${validation.error}`);
+                    continue;
                 }
 
+                // Generate unique filename
+                const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+                const extension = extname(file.originalname);
+                const fileName = `${docType}-${uniqueSuffix}${extension}`;
+
+                // Create Supabase Storage path: uploads/userId/documents/filename
+                const storagePath = `${uploadDto.user_id}/documents/${fileName}`;
+
+                // Upload to Supabase Storage
+                const { data: uploadData, error: uploadError } = await this.supabase.storage
+                    .from('uploads')
+                    .upload(storagePath, file.buffer, {
+                        contentType: file.mimetype,
+                        upsert: false
+                    });
+
+                if (uploadError) {
+                    this.logger.error(`Supabase upload error for ${file.originalname}:`, uploadError);
+                    continue;
+                }
+
+                // Get public URL
+                const { data: publicUrlData } = this.supabase.storage
+                    .from('uploads')
+                    .getPublicUrl(storagePath);
+
+                // Create document record
                 const createDocumentDto: CreateDocumentDto = {
                     user_id: uploadDto.user_id,
                     doc_type: docType,
-                    file_path: file.path,
+                    file_path: storagePath,
                     file_name: file.originalname,
                     file_size_bytes: file.size,
                     mime_type: file.mimetype,
-                    notes: uploadDto[`notes_${index}`],
+                    public_url: publicUrlData.publicUrl,
+                    notes: notes,
                 };
 
-                return await this.documentsService.create(createDocumentDto);
-            });
+                const document = await this.documentsService.create(createDocumentDto);
+                uploadedDocuments.push(new DocumentUploadResponseDto({
+                    id: document.id,
+                    file_name: document.file_name,
+                    file_path: document.file_path,
+                    file_size_bytes: document.file_size_bytes,
+                    mime_type: document.mime_type,
+                    public_url: document.public_url,
+                    doc_type: document.doc_type,
+                    verification_status: document.verification_status,
+                    uploaded_at: document.uploaded_at,
+                }));
 
-            const documents = await Promise.all(documentPromises);
+                // Clean up temporary file
+                try {
+                    fs.unlinkSync(file.path);
+                } catch (cleanupError) {
+                    this.logger.warn('Failed to cleanup temp file:', cleanupError);
+                }
+            }
 
-            return documents.map(doc => new DocumentUploadResponseDto({
-                id: doc.id,
-                file_name: doc.file_name,
-                file_path: doc.file_path,
-                file_size_bytes: doc.file_size_bytes,
-                mime_type: doc.mime_type,
-                public_url: doc.public_url,
-                doc_type: doc.doc_type,
-                verification_status: doc.verification_status,
-                uploaded_at: doc.uploaded_at,
-            }));
+            return uploadedDocuments;
         } catch (error) {
             this.logger.error('Error uploading multiple documents:', error);
             if (error instanceof HttpException) {
@@ -168,82 +250,17 @@ export class DocumentsController {
     }
 
     /**
-     * Search documents
-     */
-    @Get('search')
-    async searchDocuments(
-        @Query('q') query?: string,
-        @Query('user_id') userId?: string,
-    ): Promise<DocumentResponseDto[]> {
-        try {
-            if (!query || query.trim().length < 2) {
-                throw new HttpException('Search query must be at least 2 characters', HttpStatus.BAD_REQUEST);
-            }
-
-            const documents = await this.documentsService.searchDocuments(query.trim(), userId);
-            return documents;
-        } catch (error) {
-            this.logger.error('Error searching documents:', error);
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            throw new HttpException('Failed to search documents', HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    /**
-     * Get document by ID
-     */
-    @Get(':id')
-    async getDocumentById(@Param('id') id: string): Promise<DocumentResponseDto> {
-        try {
-            const document = await this.documentsService.findById(id);
-            return document;
-        } catch (error) {
-            this.logger.error(`Error getting document ${id}:`, error);
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            throw new HttpException('Failed to get document', HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    /**
-     * Get all documents with optional filters
-     */
-    @Get()
-    async getAllDocuments(
-        @Query('user_id') userId?: string,
-        @Query('doc_type') docType?: string,
-        @Query('verification_status') verificationStatus?: string,
-    ): Promise<DocumentResponseDto[]> {
-        try {
-            const filters: any = {};
-
-            if (userId) filters.user_id = userId;
-            if (docType) filters.doc_type = docType;
-            if (verificationStatus) filters.verification_status = verificationStatus;
-
-            const documents = await this.documentsService.findAll(filters);
-            return documents;
-        } catch (error) {
-            this.logger.error('Error getting all documents:', error);
-            throw new HttpException('Failed to get documents', HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    /**
      * Get current user's documents
      */
     @Get('my-documents/list')
     @UseGuards(AuthGuard('jwt'))
-    async getCurrentUserDocuments(@Request() req: any): Promise<DocumentResponseDto[]> {
+    async getMyDocuments(@Request() req: any): Promise<DocumentResponseDto[]> {
         try {
             const userId = req.user.id;
             const documents = await this.documentsService.findByUserId(userId);
-            return documents;
+            return documents.map(doc => new DocumentResponseDto(doc));
         } catch (error) {
-            this.logger.error('Error getting current user documents:', error);
+            this.logger.error('Error getting user documents:', error);
             throw new HttpException('Failed to get documents', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
@@ -253,45 +270,50 @@ export class DocumentsController {
      */
     @Get('my-documents/summary')
     @UseGuards(AuthGuard('jwt'))
-    async getCurrentUserDocumentsSummary(@Request() req: any): Promise<UserDocumentsSummaryDto> {
+    async getMyDocumentsSummary(@Request() req: any): Promise<UserDocumentsSummaryDto> {
         try {
             const userId = req.user.id;
-            const summary = await this.documentsService.getUserDocumentsSummary(userId);
-            return summary;
+            return await this.documentsService.getUserDocumentsSummary(userId);
         } catch (error) {
-            this.logger.error('Error getting user documents summary:', error);
-            throw new HttpException('Failed to get documents summary', HttpStatus.INTERNAL_SERVER_ERROR);
+            this.logger.error('Error getting document summary:', error);
+            throw new HttpException('Failed to get document summary', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
     /**
-     * Get documents by user ID
+     * Get document by ID
      */
-    @Get('user/:userId')
-    async getDocumentsByUserId(@Param('userId') userId: string): Promise<DocumentResponseDto[]> {
+    @Get(':id')
+    @UseGuards(AuthGuard('jwt'))
+    async getDocumentById(@Param('id') id: string): Promise<DocumentResponseDto> {
         try {
-            const documents = await this.documentsService.findByUserId(userId);
-            return documents;
+            const document = await this.documentsService.findById(id);
+            return new DocumentResponseDto(document);
         } catch (error) {
-            this.logger.error(`Error getting documents for user ${userId}:`, error);
-            throw new HttpException('Failed to get documents', HttpStatus.INTERNAL_SERVER_ERROR);
+            this.logger.error('Error getting document by ID:', error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException('Failed to get document', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
     /**
-     * Get documents by user ID and type
+     * Get documents by type
      */
-    @Get('user/:userId/type/:docType')
-    async getDocumentsByUserIdAndType(
-        @Param('userId') userId: string,
+    @Get('type/:docType')
+    @UseGuards(AuthGuard('jwt'))
+    async getDocumentsByType(
         @Param('docType') docType: string,
+        @Request() req: any,
     ): Promise<DocumentResponseDto[]> {
         try {
+            const userId = req.user.id;
             const documents = await this.documentsService.findByUserIdAndType(userId, docType);
-            return documents;
+            return documents.map(doc => new DocumentResponseDto(doc));
         } catch (error) {
-            this.logger.error(`Error getting ${docType} documents for user ${userId}:`, error);
-            throw new HttpException('Failed to get documents', HttpStatus.INTERNAL_SERVER_ERROR);
+            this.logger.error('Error getting documents by type:', error);
+            throw new HttpException('Failed to get documents by type', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
@@ -306,9 +328,9 @@ export class DocumentsController {
     ): Promise<DocumentResponseDto> {
         try {
             const document = await this.documentsService.update(id, updateDocumentDto);
-            return document;
+            return new DocumentResponseDto(document);
         } catch (error) {
-            this.logger.error(`Error updating document ${id}:`, error);
+            this.logger.error('Error updating document:', error);
             if (error instanceof HttpException) {
                 throw error;
             }
@@ -323,10 +345,25 @@ export class DocumentsController {
     @UseGuards(AuthGuard('jwt'))
     async deleteDocument(@Param('id') id: string): Promise<{ success: boolean }> {
         try {
-            const success = await this.documentsService.delete(id);
-            return { success };
+            // Get document first to get the file path
+            const document = await this.documentsService.findById(id);
+
+            // Delete from Supabase Storage
+            const { error: storageError } = await this.supabase.storage
+                .from('uploads')
+                .remove([document.file_path]);
+
+            if (storageError) {
+                this.logger.warn('Failed to delete file from storage:', storageError);
+                // Continue with database deletion even if storage deletion fails
+            }
+
+            // Delete from database
+            await this.documentsService.delete(id);
+
+            return { success: true };
         } catch (error) {
-            this.logger.error(`Error deleting document ${id}:`, error);
+            this.logger.error('Error deleting document:', error);
             if (error instanceof HttpException) {
                 throw error;
             }
@@ -335,19 +372,19 @@ export class DocumentsController {
     }
 
     /**
-     * Verify or reject document
+     * Verify document
      */
     @Put(':id/verify')
     @UseGuards(AuthGuard('jwt'))
     async verifyDocument(
         @Param('id') id: string,
         @Body() verifyDto: DocumentVerifyDto,
-    ): Promise<DocumentResponseDto> {
+    ): Promise<DocumentVerificationDto> {
         try {
-            const document = await this.documentsService.verifyDocument(id, verifyDto);
-            return document;
+            const result = await this.documentsService.verifyDocument(id, verifyDto);
+            return result;
         } catch (error) {
-            this.logger.error(`Error verifying document ${id}:`, error);
+            this.logger.error('Error verifying document:', error);
             if (error instanceof HttpException) {
                 throw error;
             }
@@ -356,87 +393,31 @@ export class DocumentsController {
     }
 
     /**
-     * Get documents pending review
-     */
-    @Get('review/pending')
-    @UseGuards(AuthGuard('jwt'))
-    async getPendingReviewDocuments(): Promise<DocumentVerificationDto[]> {
-        try {
-            const documents = await this.documentsService.getPendingReview();
-            return documents;
-        } catch (error) {
-            this.logger.error('Error getting pending review documents:', error);
-            throw new HttpException('Failed to get pending documents', HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    /**
-     * Get documents by verification status
-     */
-    @Get('status/:status')
-    async getDocumentsByStatus(@Param('status') status: string): Promise<DocumentResponseDto[]> {
-        try {
-            // Validate status parameter
-            const validStatuses = ['pending_review', 'verified', 'rejected'];
-            if (!validStatuses.includes(status)) {
-                throw new HttpException(`Invalid status. Must be one of: ${validStatuses.join(', ')}`, HttpStatus.BAD_REQUEST);
-            }
-
-            const documents = await this.documentsService.getDocumentsByStatus(status as 'pending_review' | 'verified' | 'rejected');
-            return documents;
-        } catch (error) {
-            this.logger.error(`Error getting documents with status ${status}:`, error);
-            if (error instanceof HttpException) {
-                throw error;
-            }
-            throw new HttpException('Failed to get documents', HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    /**
      * Get document statistics
      */
-    @Get('stats/summary')
-    async getDocumentStats(
-        @Query('user_id') userId?: string,
-    ): Promise<DocumentStatsDto> {
+    @Get('stats/overview')
+    @UseGuards(AuthGuard('jwt'))
+    async getDocumentStats(): Promise<DocumentStatsDto> {
         try {
-            const stats = await this.documentsService.getDocumentStats(userId);
-            return stats;
+            return await this.documentsService.getDocumentStats();
         } catch (error) {
             this.logger.error('Error getting document stats:', error);
-            throw new HttpException('Failed to get document stats', HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new HttpException('Failed to get document statistics', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
     /**
-     * Get allowed file types
+     * Get documents by user ID (admin only)
      */
-    @Get('config/file-types')
-    async getAllowedFileTypes(): Promise<{ allowedTypes: string[]; maxFileSize: number; requiredDocuments: string[] }> {
+    @Get('user/:userId')
+    @UseGuards(AuthGuard('jwt'))
+    async getDocumentsByUserId(@Param('userId') userId: string): Promise<DocumentResponseDto[]> {
         try {
-            return {
-                allowedTypes: this.documentsService.getAllowedFileTypes(),
-                maxFileSize: this.documentsService.getMaxFileSize(),
-                requiredDocuments: this.documentsService.getRequiredDocumentTypes(),
-            };
+            const documents = await this.documentsService.findByUserId(userId);
+            return documents.map(doc => new DocumentResponseDto(doc));
         } catch (error) {
-            this.logger.error('Error getting file config:', error);
-            throw new HttpException('Failed to get file configuration', HttpStatus.INTERNAL_SERVER_ERROR);
-        }
-    }
-
-    /**
-     * Check if user has required documents
-     */
-    @Get('user/:userId/required-check')
-    async checkRequiredDocuments(@Param('userId') userId: string): Promise<{ hasRequired: boolean }> {
-        try {
-            const hasRequired = await this.documentsService.hasRequiredDocuments(userId);
-            return { hasRequired };
-        } catch (error) {
-            this.logger.error(`Error checking required documents for user ${userId}:`, error);
-            throw new HttpException('Failed to check required documents', HttpStatus.INTERNAL_SERVER_ERROR);
+            this.logger.error('Error getting documents by user ID:', error);
+            throw new HttpException('Failed to get documents by user ID', HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 }
