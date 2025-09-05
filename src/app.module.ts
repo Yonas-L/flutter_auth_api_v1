@@ -11,6 +11,7 @@ import { DocumentsModule } from './modules/documents/documents.module';
 import { OtpModule } from './modules/otp/otp.module';
 import { MailModule } from './modules/mail/mail.module';
 import { DatabaseModule } from './modules/database/database.module';
+import { SocketModule } from './modules/socket/socket.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { DatabaseModule } from './modules/database/database.module';
     DocumentsModule,
     OtpModule,
     MailModule,
+    SocketModule,
   ],
   controllers: [AppController],
   providers: [AppService],
