@@ -18,24 +18,24 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 async function runMigration() {
     try {
         console.log('🚀 Starting database migration...');
-        
+
         // Read the migration file
         const migrationPath = path.join(__dirname, '..', 'migrations', 'add_realtime_fields_to_driver_profiles.sql');
         const migrationSQL = fs.readFileSync(migrationPath, 'utf8');
-        
+
         console.log('📄 Migration SQL loaded');
-        
+
         // Execute the migration
         const { data, error } = await supabase.rpc('exec_sql', { sql: migrationSQL });
-        
+
         if (error) {
             console.error('❌ Migration failed:', error);
             process.exit(1);
         }
-        
+
         console.log('✅ Migration completed successfully!');
         console.log('📊 Added real-time tracking fields to driver_profiles table');
-        
+
     } catch (error) {
         console.error('❌ Migration error:', error);
         process.exit(1);

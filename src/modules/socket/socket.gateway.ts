@@ -4,6 +4,8 @@ import {
     OnGatewayConnection,
     OnGatewayDisconnect,
     ConnectedSocket,
+    SubscribeMessage,
+    MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
@@ -26,6 +28,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     private readonly logger = new Logger(SocketGateway.name);
     private readonly connectedDrivers = new Map<string, AuthenticatedSocket>();
+    private readonly availableDrivers = new Map<string, AuthenticatedSocket>();
 
     private supabase;
 
@@ -90,7 +93,19 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     async handleDisconnect(client: Socket) {
         const authClient = client as AuthenticatedSocket;
         if (authClient.userId) {
+            // Remove from connected drivers
             this.connectedDrivers.delete(authClient.userId);
+            
+            // Remove from available drivers
+            this.availableDrivers.delete(authClient.userId);
+            
+            // Update database - set offline
+            await this.updateDriverStatus(authClient.userId, {
+                is_online: false,
+                is_available: false,
+                socket_id: null
+            });
+            
             this.logger.log(`Driver ${authClient.userId} disconnected`);
         }
     }
@@ -118,5 +133,154 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // Broadcast to all connected drivers
     broadcastToDrivers(event: string, data: any): void {
         this.server.emit(event, data);
+    }
+
+    // ==========================================
+    // Driver Availability Management
+    // ==========================================
+
+    @SubscribeMessage('driver:set_availability')
+    async handleSetAvailability(
+        @ConnectedSocket() client: AuthenticatedSocket,
+        @MessageBody() data: { available: boolean; location?: { lat: number; lng: number } }
+    ) {
+        try {
+            const { available, location } = data;
+            const userId = client.userId;
+
+            if (available) {
+                // Add to available drivers
+                this.availableDrivers.set(userId, client);
+                await client.join('available_drivers');
+                
+                // Update location if provided
+                if (location) {
+                    await this.updateDriverLocation(userId, location);
+                }
+                
+                this.logger.log(`Driver ${userId} is now available`);
+            } else {
+                // Remove from available drivers
+                this.availableDrivers.delete(userId);
+                await client.leave('available_drivers');
+                
+                this.logger.log(`Driver ${userId} is no longer available`);
+            }
+
+            // Update database
+            await this.updateDriverStatus(userId, {
+                is_available: available,
+                is_online: true,
+                socket_id: client.id
+            });
+
+            // Notify driver of status change
+            client.emit('driver:availability_updated', {
+                available,
+                message: available ? 'You are now available for rides' : 'You are no longer available'
+            });
+
+        } catch (error) {
+            this.logger.error(`Error setting driver availability:`, error);
+            client.emit('error', { message: 'Failed to update availability status' });
+        }
+    }
+
+    // ==========================================
+    // Location Tracking
+    // ==========================================
+
+    @SubscribeMessage('driver:location_update')
+    async handleLocationUpdate(
+        @ConnectedSocket() client: AuthenticatedSocket,
+        @MessageBody() data: { lat: number; lng: number; accuracy?: number }
+    ) {
+        try {
+            const { lat, lng, accuracy } = data;
+            const userId = client.userId;
+
+            // Update driver location in database
+            await this.updateDriverLocation(userId, { lat, lng });
+
+            this.logger.debug(`Driver ${userId} location updated: ${lat}, ${lng}`);
+
+            // Acknowledge location update
+            client.emit('driver:location_acknowledged', {
+                timestamp: new Date().toISOString(),
+                accuracy
+            });
+
+        } catch (error) {
+            this.logger.error(`Error updating driver location:`, error);
+            client.emit('error', { message: 'Failed to update location' });
+        }
+    }
+
+    // ==========================================
+    // Database Update Methods
+    // ==========================================
+
+    private async updateDriverStatus(userId: string, updates: {
+        is_online?: boolean;
+        is_available?: boolean;
+        socket_id?: string | null;
+    }) {
+        try {
+            const { error } = await this.supabase
+                .from('driver_profiles')
+                .update({
+                    ...updates,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('user_id', userId);
+
+            if (error) {
+                this.logger.error(`Failed to update driver status:`, error);
+            }
+        } catch (error) {
+            this.logger.error(`Error updating driver status:`, error);
+        }
+    }
+
+    private async updateDriverLocation(userId: string, location: { lat: number; lng: number }) {
+        try {
+            // Convert lat/lng to PostGIS geography point
+            const locationPoint = `POINT(${location.lng} ${location.lat})`;
+            
+            const { error } = await this.supabase
+                .from('driver_profiles')
+                .update({
+                    last_known_location: locationPoint,
+                    last_location_update: new Date().toISOString(),
+                    updated_at: new Date().toISOString()
+                })
+                .eq('user_id', userId);
+
+            if (error) {
+                this.logger.error(`Failed to update driver location:`, error);
+            }
+        } catch (error) {
+            this.logger.error(`Error updating driver location:`, error);
+        }
+    }
+
+    // ==========================================
+    // Enhanced Utility Methods
+    // ==========================================
+
+    getAvailableDrivers(): AuthenticatedSocket[] {
+        return Array.from(this.availableDrivers.values());
+    }
+
+    getAvailableDriversCount(): number {
+        return this.availableDrivers.size;
+    }
+
+    isDriverAvailable(userId: string): boolean {
+        return this.availableDrivers.has(userId);
+    }
+
+    getDriverById(userId: string): AuthenticatedSocket | undefined {
+        return this.connectedDrivers.get(userId);
     }
 }
