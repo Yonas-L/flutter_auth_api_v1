@@ -21,6 +21,11 @@ export interface DriverProfile {
     is_available: boolean;
     is_online: boolean;
     active_vehicle_id?: string;
+    // Real-time tracking fields
+    last_known_location?: string; // PostGIS geography as string
+    last_location_update?: string;
+    current_trip_id?: string;
+    socket_id?: string;
     created_at: string;
     updated_at: string;
 }

@@ -265,7 +265,7 @@ export class OtpController {
     try {
       // Create or get user in Supabase and get tokens
       const tokenResponse = await this.supaAuth.createOrGetTokens(normalizedPhone);
-      
+
       return {
         success: true,
         message: 'Development login successful',

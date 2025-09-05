@@ -87,4 +87,21 @@ export class UpdateDriverProfileDto {
   @IsOptional()
   @IsString()
   active_vehicle_id?: string;
+
+  // Real-time tracking fields
+  @IsOptional()
+  @IsString()
+  last_known_location?: string;
+
+  @IsOptional()
+  @IsString()
+  last_location_update?: string;
+
+  @IsOptional()
+  @IsString()
+  current_trip_id?: string;
+
+  @IsOptional()
+  @IsString()
+  socket_id?: string;
 }
