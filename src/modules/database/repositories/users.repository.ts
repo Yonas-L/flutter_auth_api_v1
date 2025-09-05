@@ -183,7 +183,7 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
     async upsert(userData: CreateUserData): Promise<User> {
         try {
             this.logger.log(`Upserting user with data: ${JSON.stringify(userData)}`);
-            
+
             // First, try to find existing user by ID (if provided), phone, or email
             let existingUser: User | null = null;
 
@@ -210,7 +210,7 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
                 this.logger.log(`Updating existing user: ${existingUser.id}`);
                 const updateData = { ...userData };
                 delete updateData.id; // Don't try to update the ID
-                
+
                 const updatedUser = await this.update(existingUser.id, updateData);
                 if (!updatedUser) {
                     throw new Error('Failed to update existing user');

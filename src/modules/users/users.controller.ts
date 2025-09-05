@@ -224,7 +224,7 @@ export class UsersController {
                 stack: error.stack,
                 userData: createUserDto,
             });
-            
+
             // Provide more specific error messages
             if (error.message?.includes('duplicate key') || error.code === '23505') {
                 throw new HttpException('User already exists with this phone or email', HttpStatus.CONFLICT);
