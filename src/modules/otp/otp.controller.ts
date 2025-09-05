@@ -243,4 +243,48 @@ export class OtpController {
       throw new HttpException('Failed to get OTP stats', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
+
+  // Development bypass endpoint - only works in development
+  @Post('dev-login')
+  async devLogin(@Body() body: { phoneNumber: string }) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new HttpException('Development endpoint not available in production', HttpStatus.FORBIDDEN);
+    }
+
+    const { phoneNumber } = body;
+    if (!phoneNumber) {
+      throw new HttpException('Phone number is required', HttpStatus.BAD_REQUEST);
+    }
+
+    // Normalize phone number
+    const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+    
+    // Create a mock OTP verification for development
+    this.logger.log(`🔧 DEV LOGIN: Bypassing OTP for ${normalizedPhone}`);
+    
+    try {
+      // Create or get user in Supabase
+      const { data: user, error } = await this.supaAuth.createOrGetUser(normalizedPhone);
+      
+      if (error) {
+        this.logger.error('Dev login failed:', error);
+        throw new HttpException('Dev login failed', HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      return {
+        success: true,
+        message: 'Development login successful',
+        user: {
+          id: user.id,
+          phone: user.phone,
+          email: user.email,
+        },
+        accessToken: user.access_token,
+        refreshToken: user.refresh_token,
+      };
+    } catch (error) {
+      this.logger.error('Dev login error:', error);
+      throw new HttpException('Dev login failed', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
 }

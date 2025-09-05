@@ -8,6 +8,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { createClient } from '@supabase/supabase-js';
 
 interface AuthenticatedSocket extends Socket {
     userId: string;
@@ -26,7 +27,14 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly logger = new Logger(SocketGateway.name);
     private readonly connectedDrivers = new Map<string, AuthenticatedSocket>();
 
-    constructor(private jwtService: JwtService) { }
+    private supabase;
+
+    constructor(private jwtService: JwtService) {
+        this.supabase = createClient(
+            process.env.SUPABASE_URL,
+            process.env.SUPABASE_SERVICE_ROLE_KEY
+        );
+    }
 
     async handleConnection(client: Socket) {
         try {
@@ -39,12 +47,16 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 return;
             }
 
-            const payload = this.jwtService.verify(token);
-            const userId = payload.sub || payload.id;
-
-            if (!userId) {
-                throw new UnauthorizedException('Invalid token: missing user ID');
+            // Verify Supabase JWT token
+            const { data: { user }, error } = await this.supabase.auth.getUser(token);
+            
+            if (error || !user) {
+                this.logger.warn(`Connection rejected: Invalid Supabase token for ${client.id}: ${error?.message}`);
+                client.disconnect();
+                return;
             }
+
+            const userId = user.id;
 
             // Attach user info to socket
             (client as AuthenticatedSocket).userId = userId;
