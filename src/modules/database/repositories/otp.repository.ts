@@ -305,6 +305,35 @@ export class OtpRepository implements BaseRepository<OtpCode, CreateOtpCodeData,
     }
 
     /**
+     * Delete all OTPs for a phone number and specific purpose (before creating new OTP)
+     */
+    async deleteAllForPhoneAndPurpose(phoneE164: string, purpose: string): Promise<number> {
+        try {
+            const { data, error } = await this.databaseService.client
+                .from('otp_codes')
+                .delete()
+                .eq('phone_e164', phoneE164)
+                .eq('purpose', purpose)
+                .select('id');
+
+            if (error) {
+                this.logger.error(`Failed to delete OTPs for ${phoneE164} with purpose ${purpose}:`, error);
+                throw error;
+            }
+
+            const deletedCount = data?.length || 0;
+            if (deletedCount > 0) {
+                this.logger.log(`🗑️ Deleted ${deletedCount} OTP(s) for ${phoneE164} with purpose ${purpose}`);
+            }
+
+            return deletedCount;
+        } catch (error) {
+            this.logger.error(`Error deleting OTPs for ${phoneE164} with purpose ${purpose}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Get OTP statistics
      */
     async getOtpStats(): Promise<{

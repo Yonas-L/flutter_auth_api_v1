@@ -23,6 +23,12 @@ export class OtpService {
     purpose: string = 'registration'
   ): Promise<any> {
     try {
+      // First, clean up any existing OTPs for this phone and purpose
+      const existingCount = await this.otpRepository.deleteAllForPhoneAndPurpose(phoneE164, purpose);
+      if (existingCount > 0) {
+        this.logger.log(`🧹 Cleaned up ${existingCount} existing OTP(s) for ${phoneE164} with purpose ${purpose}`);
+      }
+
       const saltRounds = 10;
       const codeHash = await bcrypt.hash(code, saltRounds);
 
@@ -37,7 +43,7 @@ export class OtpService {
         max_attempts: 3,
       });
 
-      this.logger.log(`📝 OTP stored in database for ${phoneE164}, expires at ${expiresAt.toISOString()}`);
+      this.logger.log(`📝 New OTP stored in database for ${phoneE164}, expires at ${expiresAt.toISOString()}`);
 
       return {
         id: otpCode.id,
