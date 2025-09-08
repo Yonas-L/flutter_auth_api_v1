@@ -34,9 +34,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       try {
         user = await this.usersService.create({
           id: userId,
-          phone_e164: payload.phone.startsWith('+') ? payload.phone : `+${payload.phone}`,
+          phone_number: payload.phone.startsWith('+') ? payload.phone : `+${payload.phone}`,
           email: payload.email,
-          display_name: payload.user_metadata?.display_name || null,
+          full_name: payload.user_metadata?.display_name || null,
+          user_type: 'passenger',
+          is_active: true,
           is_phone_verified: true, // If they have a valid Supabase token, phone is verified
           is_email_verified: payload.email_confirmed_at ? true : false,
           status: 'pending_verification', // Default status for new users
@@ -56,8 +58,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       id: user.id,
       email: user.email,
-      phoneNumber: user.phone_e164,
-      name: user.display_name,
+      phoneNumber: user.phone_number,
+      name: user.full_name,
       role: 'driver', // Default for now
       status: user.status,
     };

@@ -4,14 +4,18 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './modules/auth/auth.module';
+import { AuthPostgresModule } from './modules/auth/auth-postgres.module';
 import { UsersModule } from './modules/users/users.module';
 import { DriverProfilesModule } from './modules/driver-profiles/driver-profiles.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
 import { DocumentsModule } from './modules/documents/documents.module';
 import { OtpModule } from './modules/otp/otp.module';
+import { OtpAfroMessageModule } from './modules/otp/otp-afromessage.module';
 import { MailModule } from './modules/mail/mail.module';
 import { DatabaseModule } from './modules/database/database.module';
 import { SocketModule } from './modules/socket/socket.module';
+import { StorageModule } from './modules/storage/storage.module';
+import { CloudinaryModule } from './modules/storage/cloudinary.module';
 
 @Module({
   imports: [
@@ -26,14 +30,18 @@ import { SocketModule } from './modules/socket/socket.module';
     //   }),
     // }),
     DatabaseModule,
-    AuthModule,
+    AuthModule, // Legacy Supabase auth
+    AuthPostgresModule, // New PostgreSQL auth
     UsersModule,
     DriverProfilesModule,
     VehiclesModule,
     DocumentsModule,
     OtpModule,
+    OtpAfroMessageModule,
     MailModule,
     SocketModule,
+    StorageModule,
+    CloudinaryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

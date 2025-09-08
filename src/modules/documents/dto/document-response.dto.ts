@@ -21,6 +21,7 @@ export class DocumentResponseDto {
 
 export class DocumentUploadResponseDto {
     id: string;
+    user_id: string;
     file_name: string;
     file_path: string;
     file_size_bytes: number;
@@ -28,7 +29,9 @@ export class DocumentUploadResponseDto {
     public_url?: string;
     doc_type: string;
     verification_status: string;
+    notes?: string;
     uploaded_at: string;
+    message?: string;
 
     constructor(partial: Partial<DocumentUploadResponseDto>) {
         Object.assign(this, partial);

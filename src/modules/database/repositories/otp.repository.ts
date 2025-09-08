@@ -72,7 +72,7 @@ export class OtpRepository implements BaseRepository<OtpCode, CreateOtpCodeData,
                 throw error;
             }
 
-            this.logger.log(`✅ OTP code created successfully: ${otpCode.id} for ${data.phone_e164}`);
+            this.logger.log(`✅ OTP code created successfully: ${otpCode.id} for ${data.phone_number}`);
             return otpCode;
         } catch (error) {
             this.logger.error('Error creating OTP code:', error);

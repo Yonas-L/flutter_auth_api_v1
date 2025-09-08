@@ -31,6 +31,12 @@ REFRESH_EXPIRES_IN=7d
 # Database Configuration
 DATABASE_URL=your_database_url
 
+# Cloudinary Configuration
+CLOUDINARY_CLOUD_NAME=dbgepm3xy
+CLOUDINARY_KEY=523756119649921
+CLOUDINARY_SECRET=B33mpoVwb_RN66edfGUAguU2sqE
+CLOUDINARY_URL=cloudinary://523756119649921:B33mpoVwb_RN66edfGUAguU2sqE@dbgepm3xy
+
 # Server Configuration
 PORT=8080
 NODE_ENV=production

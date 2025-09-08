@@ -43,8 +43,10 @@ export class AuthService {
     if (!user) {
       user = await this.usersService.create({
         email,
-        status: 'active',
+        status: 'verified',
         is_email_verified: true,
+        user_type: 'passenger',
+        is_active: true,
       });
     }
 
@@ -65,7 +67,7 @@ export class AuthService {
       user: {
         id: user.id,
         email: user.email,
-        name: user.display_name,
+        name: user.full_name,
         role: 'driver', // Default role for now
         status: user.status,
       },
@@ -97,10 +99,10 @@ export class AuthService {
     const otp = await this.otpService.generateOtp();
 
     // Store OTP in database
-    await this.otpService.createOtpForPhone(phoneNumber, otp);
+    const otpData = await this.otpService.createOtpForPhone(phoneNumber, 10, 'login');
 
     // Send OTP via SMS using AfroMessage
-    const smsResult = await this.afroMessageService.sendOtp(phoneNumber);
+    const smsResult = await this.afroMessageService.sendOtp(phoneNumber, otpData.code);
 
     if (!smsResult.success) {
       throw new BadRequestException(`Failed to send SMS: ${smsResult.error}`);
@@ -121,8 +123,8 @@ export class AuthService {
     let user = await this.usersService.findByPhone(phoneNumber);
     if (!user) {
       user = await this.usersService.create({
-        phone_e164: phoneNumber,
-        status: 'active',
+        phone_number: phoneNumber,
+        status: 'verified',
         is_phone_verified: true,
       });
     }
@@ -131,7 +133,7 @@ export class AuthService {
     await this.usersService.updateLastLogin(user.id);
 
     // Generate tokens
-    const payload = { phoneNumber: user.phone_e164, sub: user.id };
+    const payload = { phoneNumber: user.phone_number, sub: user.id };
     const accessToken = this.jwtService.sign(payload);
     const refreshToken = this.jwtService.sign(payload, {
       secret: this.configService.get('JWT_REFRESH_SECRET'),
@@ -143,8 +145,8 @@ export class AuthService {
       refreshToken,
       user: {
         id: user.id,
-        phoneNumber: user.phone_e164,
-        name: user.display_name,
+        phoneNumber: user.phone_number,
+        name: user.full_name,
         role: 'driver', // Default role for now
         status: user.status,
       },

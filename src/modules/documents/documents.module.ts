@@ -1,7 +1,11 @@
 import { Module } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
 import { DocumentsController } from './documents.controller';
+import { DocumentsPostgresController } from './documents-postgres.controller';
+import { DocumentsCloudinaryController } from './documents-cloudinary.controller';
 import { DatabaseModule } from '../database/database.module';
+import { StorageModule } from '../storage/storage.module';
+import { CloudinaryModule } from '../storage/cloudinary.module';
 import { MulterModule } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -9,6 +13,8 @@ import { extname } from 'path';
 @Module({
     imports: [
         DatabaseModule,
+        StorageModule,
+        CloudinaryModule,
         MulterModule.registerAsync({
             useFactory: () => {
                 return {
@@ -42,7 +48,7 @@ import { extname } from 'path';
             },
         }),
     ],
-    controllers: [DocumentsController],
+    controllers: [DocumentsController, DocumentsPostgresController, DocumentsCloudinaryController],
     providers: [DocumentsService],
     exports: [DocumentsService],
 })

@@ -34,10 +34,10 @@ import {
 import { createClient } from '@supabase/supabase-js';
 import * as fs from 'fs';
 
-// Configure multer for memory storage (we'll upload to Supabase)
+// Configure multer for memory storage (legacy - now using local storage)
 const storage = diskStorage({
     destination: (req, file, cb) => {
-        // Use memory storage since we'll upload to Supabase
+        // Use temp directory for legacy Supabase uploads
         cb(null, '/tmp');
     },
     filename: (req, file, cb) => {
@@ -54,7 +54,7 @@ export class DocumentsController {
     private readonly supabase;
 
     constructor(private readonly documentsService: DocumentsService) {
-        // Initialize Supabase client
+        // Initialize Supabase client for legacy compatibility
         this.supabase = createClient(
             process.env.SUPABASE_URL!,
             process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -62,7 +62,7 @@ export class DocumentsController {
     }
 
     /**
-     * Upload a single document to Supabase Storage
+     * Upload a single document to Supabase Storage (LEGACY - use DocumentsPostgresController)
      */
     @Post('upload')
     @UseGuards(AuthGuard('jwt'))

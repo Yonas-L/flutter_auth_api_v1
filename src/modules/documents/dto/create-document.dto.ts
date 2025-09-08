@@ -5,8 +5,8 @@ export class CreateDocumentDto {
     @IsUUID()
     user_id: string;
 
-    @IsIn(['driver_license', 'vehicle_registration', 'insurance', 'profile_picture', 'vehicle_photo', 'other'])
-    doc_type: 'driver_license' | 'vehicle_registration' | 'insurance' | 'profile_picture' | 'vehicle_photo' | 'other';
+    @IsString()
+    doc_type: string;
 
     @IsString()
     file_path: string;

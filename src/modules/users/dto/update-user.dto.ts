@@ -3,7 +3,7 @@ import { IsEmail, IsOptional, IsString, IsBoolean, IsIn, Matches } from 'class-v
 export class UpdateUserDto {
     @IsOptional()
     @Matches(/^\+251[79]\d{8}$/, { message: 'Phone number must be in Ethiopian E164 format (+251...)' })
-    phone_e164?: string;
+    phone_number?: string;
 
     @IsOptional()
     @IsEmail()
@@ -11,7 +11,7 @@ export class UpdateUserDto {
 
     @IsOptional()
     @IsString()
-    display_name?: string;
+    full_name?: string;
 
     @IsOptional()
     @IsString()

@@ -152,7 +152,7 @@ export class OtpController {
       }
 
       // Store OTP in database
-      await this.otpService.createOtpForPhone(normalizedPhone, code, 10);
+      await this.otpService.createOtpForPhone(normalizedPhone, 10, 'registration');
 
       this.logger.log(`OTP sent successfully to ${normalizedPhone}`);
 

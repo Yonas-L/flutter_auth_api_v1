@@ -1,8 +1,8 @@
 export class UserResponseDto {
     id: string;
-    phone_e164?: string;
+    phone_number?: string;
     email?: string;
-    display_name?: string;
+    full_name?: string;
     avatar_url?: string;
     is_phone_verified: boolean;
     is_email_verified: boolean;
