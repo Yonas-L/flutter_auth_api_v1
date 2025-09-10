@@ -109,14 +109,15 @@ export class OtpAfroMessageController {
             }
 
             if (result.valid) {
-                // Delete OTP from database after successful verification
-                await this.otpService.deleteOtpAfterVerification(request.to, request.code);
                 this.logger.log(`✅ OTP verified successfully for ${request.to}`);
 
-                // Create or get PostgreSQL user and issue tokens
+                // Create or get PostgreSQL user and issue tokens BEFORE deleting OTP
                 try {
-                    const tokens = await this.authPostgresService.verifyOtpForPhone(request.to, request.code);
+                    const tokens = await this.authPostgresService.createOrAuthenticateUser(request.to);
                     this.logger.log(`✅ User authenticated successfully for ${request.to}`);
+
+                    // Delete OTP from database after successful user creation
+                    await this.otpService.deleteOtpAfterVerification(request.to, request.code);
 
                     return {
                         acknowledge: 'success',

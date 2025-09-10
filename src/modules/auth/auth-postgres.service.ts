@@ -114,6 +114,46 @@ export class AuthPostgresService {
     }
 
     /**
+     * Create or authenticate user after OTP verification (OTP already verified)
+     */
+    async createOrAuthenticateUser(phoneNumber: string): Promise<AuthTokens> {
+        try {
+            this.logger.log(`🔐 Creating/authenticating user for phone: ${phoneNumber}`);
+
+            // Normalize phone number
+            const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+
+            // Find or create user
+            let user = await this.usersRepository.findByPhone(normalizedPhone);
+            if (!user) {
+                user = await this.usersRepository.create({
+                    phone_number: normalizedPhone,
+                    user_type: 'driver', // Driver app creates driver users
+                    is_phone_verified: true,
+                    is_active: true,
+                    status: 'verified',
+                });
+                this.logger.log(`✅ Created new driver user: ${user.id}`);
+            } else {
+                // Update last login and verification status
+                await this.usersRepository.updateLastLogin(user.id);
+                if (!user.is_phone_verified) {
+                    await this.usersRepository.update(user.id, { is_phone_verified: true });
+                }
+                this.logger.log(`✅ Authenticated existing user: ${user.id}`);
+            }
+
+            // Generate tokens
+            const tokens = await this.generateTokens(user);
+
+            return tokens;
+        } catch (error) {
+            this.logger.error(`❌ Error creating/authenticating user for ${phoneNumber}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Request OTP for email authentication
      */
     async requestOtpForEmail(email: string): Promise<{ message: string }> {

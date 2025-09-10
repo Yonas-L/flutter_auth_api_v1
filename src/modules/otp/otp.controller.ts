@@ -134,7 +134,7 @@ export class OtpController {
       this.logger.log(`OTP verified successfully for ${normalizedPhone}`);
 
       // Create or get PostgreSQL user and issue tokens
-      const tokens = await this.authPostgresService.verifyOtpForPhone(normalizedPhone, otp);
+      const tokens = await this.authPostgresService.createOrAuthenticateUser(normalizedPhone);
 
       this.logger.log(`User authenticated successfully for ${normalizedPhone}`);
 
