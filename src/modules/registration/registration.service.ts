@@ -351,7 +351,7 @@ export class RegistrationService {
 
         if (result.rows.length > 0) {
             const avatarUrl = result.rows[0].public_url;
-            
+
             // Update user's avatar_url
             const updateQuery = `
                 UPDATE users SET 
