@@ -127,7 +127,7 @@ export class RegistrationService {
             data.email || null,
             data.avatarUrl || null,
             data.dateOfBirth,
-            data.gender,
+            data.gender?.toLowerCase(), // Convert to lowercase to match database constraint
             data.emergencyContactName,
             data.emergencyContactPhone,
             data.userId
@@ -162,7 +162,7 @@ export class RegistrationService {
             firstName,
             lastName,
             data.dateOfBirth,
-            data.gender,
+            data.gender?.toLowerCase(), // Convert to lowercase to match database constraint
             data.address,
             data.emergencyContactName,
             data.emergencyContactPhone,
