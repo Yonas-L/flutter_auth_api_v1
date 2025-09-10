@@ -64,7 +64,8 @@ export class DocumentsCloudinaryController {
                 notes: body.notes,
             };
 
-            const document = await this.documentsService.create(documentData);
+            // Use createOrReplaceAvatar to ensure only one avatar per user
+            const document = await this.documentsService.createOrReplaceAvatar(documentData);
 
             this.logger.log(`✅ Avatar uploaded successfully: ${document.id}`);
 
@@ -145,7 +146,10 @@ export class DocumentsCloudinaryController {
                 notes: notes,
             };
 
-            const document = await this.documentsService.create(documentData);
+            // Use createOrReplaceAvatar for profile pictures to ensure only one avatar per user
+            const document = docType === 'profile_picture' 
+                ? await this.documentsService.createOrReplaceAvatar(documentData)
+                : await this.documentsService.create(documentData);
 
             this.logger.log(`✅ Document uploaded successfully: ${document.id}`);
 

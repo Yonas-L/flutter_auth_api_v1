@@ -75,6 +75,67 @@ export class DocumentsService {
     }
 
     /**
+     * Create or replace avatar - ensures only one avatar per user
+     */
+    async createOrReplaceAvatar(createDocumentDto: CreateDocumentDto): Promise<DocumentResponseDto> {
+        try {
+            // Verify user exists
+            const user = await this.usersRepository.findById(createDocumentDto.user_id);
+            if (!user) {
+                throw new NotFoundException('User not found');
+            }
+
+            // Validate file size
+            if (createDocumentDto.file_size_bytes > this.MAX_FILE_SIZE) {
+                throw new BadRequestException(`File size exceeds maximum allowed size of ${this.MAX_FILE_SIZE / 1024 / 1024}MB`);
+            }
+
+            // Validate mime type if provided
+            if (createDocumentDto.mime_type && !this.ALLOWED_MIME_TYPES.includes(createDocumentDto.mime_type)) {
+                throw new BadRequestException(`File type ${createDocumentDto.mime_type} is not allowed`);
+            }
+
+            // Check if user already has an avatar
+            const existingAvatars = await this.documentsRepository.findByUserIdAndType(
+                createDocumentDto.user_id, 
+                'profile_picture'
+            );
+
+            let document: any;
+
+            if (existingAvatars.length > 0) {
+                // Replace existing avatar
+                const existingAvatar = existingAvatars[0];
+                this.logger.log(`🔄 Replacing existing avatar: ${existingAvatar.id} for user ${createDocumentDto.user_id}`);
+                
+                // Update the existing document with new data
+                const updateData = {
+                    file_path: createDocumentDto.file_path,
+                    file_name: createDocumentDto.file_name,
+                    file_size_bytes: createDocumentDto.file_size_bytes,
+                    mime_type: createDocumentDto.mime_type,
+                    public_url: createDocumentDto.public_url,
+                    notes: createDocumentDto.notes,
+                    uploaded_at: new Date().toISOString(),
+                };
+
+                document = await this.documentsRepository.update(existingAvatar.id, updateData);
+                this.logger.log(`✅ Avatar replaced successfully: ${document.id} for user ${createDocumentDto.user_id}`);
+            } else {
+                // Create new avatar
+                this.logger.log(`📤 Creating new avatar for user ${createDocumentDto.user_id}`);
+                document = await this.documentsRepository.create(createDocumentDto);
+                this.logger.log(`✅ Avatar created successfully: ${document.id} for user ${createDocumentDto.user_id}`);
+            }
+
+            return new DocumentResponseDto(document);
+        } catch (error) {
+            this.logger.error('Error creating or replacing avatar:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Get document by ID
      */
     async findById(id: string): Promise<DocumentResponseDto> {
