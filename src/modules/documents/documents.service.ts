@@ -75,6 +75,80 @@ export class DocumentsService {
     }
 
     /**
+     * Create or replace document - ensures only one document per user per type
+     */
+    async createOrReplaceDocument(createDocumentDto: CreateDocumentDto): Promise<DocumentResponseDto> {
+        try {
+            // Verify user exists
+            const user = await this.usersRepository.findById(createDocumentDto.user_id);
+            if (!user) {
+                throw new NotFoundException('User not found');
+            }
+
+            // Validate file size
+            if (createDocumentDto.file_size_bytes > this.MAX_FILE_SIZE) {
+                throw new BadRequestException(`File size exceeds maximum allowed size of ${this.MAX_FILE_SIZE / 1024 / 1024}MB`);
+            }
+
+            // Validate mime type if provided
+            if (createDocumentDto.mime_type && !this.ALLOWED_MIME_TYPES.includes(createDocumentDto.mime_type)) {
+                throw new BadRequestException(`File type ${createDocumentDto.mime_type} is not allowed`);
+            }
+
+            // Check if user already has a document of this type
+            const existingDocuments = await this.documentsRepository.findByUserIdAndType(
+                createDocumentDto.user_id,
+                createDocumentDto.doc_type
+            );
+
+            let document: any;
+
+            if (existingDocuments.length > 0) {
+                // Replace existing document
+                const existingDocument = existingDocuments[0];
+                this.logger.log(`🔄 Replacing existing ${createDocumentDto.doc_type}: ${existingDocument.id} for user ${createDocumentDto.user_id}`);
+
+                // Update the existing document with new data
+                const updateData = {
+                    file_path: createDocumentDto.file_path,
+                    file_name: createDocumentDto.file_name,
+                    file_size_bytes: createDocumentDto.file_size_bytes,
+                    mime_type: createDocumentDto.mime_type,
+                    public_url: createDocumentDto.public_url,
+                    notes: createDocumentDto.notes,
+                    uploaded_at: new Date().toISOString(),
+                };
+
+                document = await this.documentsRepository.update(existingDocument.id, updateData);
+                this.logger.log(`✅ ${createDocumentDto.doc_type} replaced successfully: ${document.id} for user ${createDocumentDto.user_id}`);
+            } else {
+                // Create new document
+                this.logger.log(`📤 Creating new ${createDocumentDto.doc_type} for user ${createDocumentDto.user_id}`);
+                document = await this.documentsRepository.create(createDocumentDto);
+                this.logger.log(`✅ ${createDocumentDto.doc_type} created successfully: ${document.id} for user ${createDocumentDto.user_id}`);
+            }
+
+            return {
+                id: document.id,
+                user_id: document.user_id,
+                doc_type: document.doc_type,
+                file_name: document.file_name,
+                file_path: document.file_path,
+                file_size_bytes: document.file_size_bytes,
+                mime_type: document.mime_type,
+                public_url: document.public_url,
+                verification_status: document.verification_status,
+                notes: document.notes,
+                uploaded_at: document.uploaded_at,
+                updated_at: document.updated_at,
+            };
+        } catch (error) {
+            this.logger.error(`❌ Error creating/replacing ${createDocumentDto.doc_type} for user ${createDocumentDto.user_id}:`, error);
+            throw error;
+        }
+    }
+
+    /**
      * Create or replace avatar - ensures only one avatar per user
      */
     async createOrReplaceAvatar(createDocumentDto: CreateDocumentDto): Promise<DocumentResponseDto> {

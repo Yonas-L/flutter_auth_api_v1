@@ -338,7 +338,7 @@ export class RegistrationService {
 
         // Process each document type
         const documentTypes = ['profile_picture', 'driver_license', 'vehicle_registration', 'insurance'];
-        
+
         for (const docType of documentTypes) {
             const documentUrl = data.documentUrls?.[docType];
             if (documentUrl) {
@@ -346,7 +346,7 @@ export class RegistrationService {
                 const checkQuery = `
                     SELECT id FROM documents 
                     WHERE user_id = $1 AND doc_type = $2 
-                    ORDER BY created_at DESC 
+                    ORDER BY uploaded_at DESC 
                     LIMIT 1
                 `;
                 const checkResult = await client.query(checkQuery, [data.userId, docType]);
@@ -361,10 +361,10 @@ export class RegistrationService {
                             updated_at = NOW()
                         WHERE id = $5
                     `;
-                    
+
                     const documentId = checkResult.rows[0].id;
                     const filePath = documentUrl.split('/').slice(-2).join('/'); // Extract path from URL
-                    
+
                     await client.query(updateQuery, [
                         data.userId,
                         docType,
@@ -372,7 +372,7 @@ export class RegistrationService {
                         documentUrl,
                         documentId
                     ]);
-                    
+
                     this.logger.log(`✅ Updated existing ${docType} document for user: ${data.userId}`);
                 } else {
                     // Create new document record
@@ -382,9 +382,9 @@ export class RegistrationService {
                             verification_status, notes
                         ) VALUES ($1, $2, $3, $4, $5, $6)
                     `;
-                    
+
                     const filePath = documentUrl.split('/').slice(-2).join('/'); // Extract path from URL
-                    
+
                     await client.query(insertQuery, [
                         data.userId,
                         docType,
@@ -393,7 +393,7 @@ export class RegistrationService {
                         'pending_review',
                         `Uploaded during registration - ${docType}`
                     ]);
-                    
+
                     this.logger.log(`✅ Created new ${docType} document for user: ${data.userId}`);
                 }
             }
