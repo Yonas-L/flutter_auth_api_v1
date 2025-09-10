@@ -45,3 +45,9 @@ SUPABASE_JWT_SECRET=QdIAZ7EIQLLbT3P4ctR+46Syk1lzxBufOfuWv2q3C+WQa6gqUlFxGpbIK2Fz
 DATABASE_URL=postgresql://db_admin:7snpqJqfviJZ9bSo6ZXkvdQi9OXsqb9f@dpg-d2v8n0re5dus73fe8170-a.oregon-postgres.render.com/arada_main
 # Backend API Configuration
 BASE_API_URL=https://flutter-auth-api-v1.onrender.com
+
+
+CLOUDINARY_CLOUD_NAME=dbgepm3xy
+CLOUDINARY_KEY=523756119649921
+CLOUDINARY_SECRET=B33mpoVwb_RN66edfGUAguU2sqE
+CLOUDINARY_URL=cloudinary://523756119649921:B33mpoVwb_RN66edfGUAguU2sqE@dbgepm3xy

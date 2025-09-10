@@ -57,10 +57,20 @@ export class CloudinaryService {
             };
 
             // Upload file to Cloudinary
-            const result = await cloudinary.uploader.upload(
-                `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
-                uploadOptions
-            );
+            // Handle case where file.buffer might be undefined (common in some Multer configurations)
+            let fileData: string;
+            
+            if (file.buffer) {
+                // Use buffer if available
+                fileData = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+            } else if (file.path) {
+                // Use file path if buffer is not available
+                fileData = file.path;
+            } else {
+                throw new Error('No file data available - neither buffer nor path found');
+            }
+
+            const result = await cloudinary.uploader.upload(fileData, uploadOptions);
 
             this.logger.log(`✅ File uploaded successfully: ${result.public_id}`);
             this.logger.log(`🔗 Public URL: ${result.secure_url}`);
