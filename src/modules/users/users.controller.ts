@@ -197,6 +197,18 @@ export class UsersController {
     }
 
     /**
+     * Test endpoint to verify backend is working
+     */
+    @Get('test')
+    async testEndpoint(): Promise<{ message: string; timestamp: string }> {
+        this.logger.log('🔍 Test endpoint called');
+        return {
+            message: 'Backend is working',
+            timestamp: new Date().toISOString()
+        };
+    }
+
+    /**
      * Update user's last login timestamp
      */
     @Post(':id/login')
