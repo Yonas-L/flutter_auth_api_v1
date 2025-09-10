@@ -86,6 +86,9 @@ export class RegistrationService {
             // 6. Update document records with proper relationships
             await this.updateDocumentRecords(client, data);
 
+            // 7. Update user avatar URL from profile picture document
+            await this.updateUserAvatarUrl(client, data.userId);
+
             await client.query('COMMIT');
 
             // Get the verification status for redirection
@@ -328,6 +331,40 @@ export class RegistrationService {
 
         await client.query(assignQuery, [userId, roleId]);
         this.logger.log(`✅ Driver role assigned to user: ${userId}`);
+    }
+
+    /**
+     * Update user avatar URL from profile picture document
+     */
+    private async updateUserAvatarUrl(client: any, userId: string): Promise<void> {
+        this.logger.log(`🖼️ Updating user avatar URL for: ${userId}`);
+
+        // Get the profile picture document for this user
+        const query = `
+            SELECT public_url FROM documents 
+            WHERE user_id = $1 AND doc_type = 'profile_picture' 
+            ORDER BY uploaded_at DESC 
+            LIMIT 1
+        `;
+
+        const result = await client.query(query, [userId]);
+
+        if (result.rows.length > 0) {
+            const avatarUrl = result.rows[0].public_url;
+            
+            // Update user's avatar_url
+            const updateQuery = `
+                UPDATE users SET 
+                    avatar_url = $1,
+                    updated_at = NOW()
+                WHERE id = $2
+            `;
+
+            await client.query(updateQuery, [avatarUrl, userId]);
+            this.logger.log(`✅ User avatar URL updated for: ${userId}`);
+        } else {
+            this.logger.log(`⚠️ No profile picture found for user: ${userId}`);
+        }
     }
 
     /**
