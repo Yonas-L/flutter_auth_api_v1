@@ -190,21 +190,6 @@ export class DriverProfilesController {
     }
   }
 
-  /**
-   * Get driver registration progress (requires authentication)
-   */
-  @Get('registration/progress')
-  @UseGuards(AuthGuard('jwt'))
-  async getDriverRegistrationProgress(@Request() req: any): Promise<DriverRegistrationProgressDto> {
-    try {
-      const userId = req.user.id;
-      const progress = await this.driverProfilesService.getRegistrationProgress(userId);
-      return progress;
-    } catch (error) {
-      this.logger.error('Error getting driver registration progress:', error);
-      throw new HttpException('Failed to get registration progress', HttpStatus.INTERNAL_SERVER_ERROR);
-    }
-  }
 
   /**
    * Get driver statistics (requires authentication)
