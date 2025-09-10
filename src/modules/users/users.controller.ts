@@ -175,9 +175,12 @@ export class UsersController {
     async getRegistrationProgress(@Request() req: any): Promise<RegistrationProgressDto> {
         try {
             const userId = req.user.id;
+            this.logger.log(`🔍 Getting registration progress for user: ${userId}`);
 
             // Get driver-specific registration progress
+            this.logger.log(`🔍 Calling driverProfilesService.getRegistrationProgress for user: ${userId}`);
             const driverProgress = await this.driverProfilesService.getRegistrationProgress(userId);
+            this.logger.log(`🔍 Driver progress response: ${JSON.stringify(driverProgress)}`);
 
             // Convert to generic registration progress format
             return new RegistrationProgressDto({

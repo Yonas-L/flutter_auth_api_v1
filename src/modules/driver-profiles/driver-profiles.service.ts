@@ -145,9 +145,19 @@ export class DriverProfilesService {
    */
   async getRegistrationProgress(userId: string): Promise<DriverRegistrationProgressDto> {
     try {
+      this.logger.log(`🔍 Getting registration progress for user: ${userId}`);
+      
+      this.logger.log(`🔍 Fetching driver profile for user: ${userId}`);
       const profile = await this.driverProfilesRepository.findByUserId(userId);
+      this.logger.log(`🔍 Profile found: ${!!profile}, ID: ${profile?.id}`);
+      
+      this.logger.log(`🔍 Fetching vehicles for driver: ${profile?.id}`);
       const vehicles = await this.vehiclesRepository.findMany({ driver_id: profile?.id });
+      this.logger.log(`🔍 Vehicles found: ${vehicles.length}`);
+      
+      this.logger.log(`🔍 Fetching documents for user: ${userId}`);
       const documents = await this.documentsRepository.findMany({ user_id: userId });
+      this.logger.log(`🔍 Documents found: ${documents.length}`);
 
       const hasProfile = !!profile;
       const hasVehicle = vehicles.length > 0;
