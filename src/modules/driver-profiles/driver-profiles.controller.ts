@@ -75,6 +75,32 @@ export class DriverProfilesController {
   }
 
   /**
+   * Get driver verification status (requires authentication)
+   */
+  @Get('status')
+  @UseGuards(AuthGuard('jwt'))
+  async getDriverStatus(@Request() req: any): Promise<{ verification_status: string }> {
+    try {
+      const userId = req.user.id;
+      const profile = await this.driverProfilesService.findByUserId(userId);
+      
+      if (!profile) {
+        throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
+      }
+
+      return {
+        verification_status: profile.verification_status || 'unverified'
+      };
+    } catch (error) {
+      this.logger.error('Error getting driver status:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Failed to get driver status', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  /**
    * Update current driver profile (requires authentication)
    */
   @Put('profile')
