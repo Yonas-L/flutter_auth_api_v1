@@ -99,41 +99,50 @@ export class DocumentsCloudinaryController {
     @UseInterceptors(FileInterceptor('file'))
     async uploadDocument(
         @UploadedFile() file: Express.Multer.File,
-        @Body() createDocumentDto: CreateDocumentDto,
+        @Body() body: any,
     ): Promise<DocumentUploadResponseDto> {
         try {
             if (!file) {
                 throw new HttpException('No file provided', HttpStatus.BAD_REQUEST);
             }
 
-            this.logger.log(`📤 Uploading document: ${file.originalname} for user: ${createDocumentDto.user_id}`);
+            // Extract data from form body
+            const userId = body.user_id;
+            const docType = body.doc_type;
+            const notes = body.notes;
+
+            if (!userId || !docType) {
+                throw new HttpException('Missing required fields: user_id and doc_type', HttpStatus.BAD_REQUEST);
+            }
+
+            this.logger.log(`📤 Uploading document: ${file.originalname} for user: ${userId}`);
 
             // Use specialized upload method based on document type
             let uploadResult: CloudinaryUploadResult;
 
-            if (createDocumentDto.doc_type === 'profile_picture') {
+            if (docType === 'profile_picture') {
                 // Use avatar upload for profile pictures
-                uploadResult = await this.cloudinaryService.uploadAvatar(file, createDocumentDto.user_id);
+                uploadResult = await this.cloudinaryService.uploadAvatar(file, userId);
             } else {
                 // Use document upload for other document types
                 uploadResult = await this.cloudinaryService.uploadDocument(
                     file,
-                    createDocumentDto.user_id,
-                    createDocumentDto.doc_type
+                    userId,
+                    docType
                 );
             }
 
             // Create document record in database
             const documentData = {
-                user_id: createDocumentDto.user_id,
-                doc_type: createDocumentDto.doc_type,
+                user_id: userId,
+                doc_type: docType,
                 file_path: uploadResult.public_id, // Store Cloudinary public_id
                 file_name: file.originalname,
                 file_size_bytes: file.size,
                 mime_type: file.mimetype,
                 public_url: uploadResult.secure_url, // Store Cloudinary URL
                 verification_status: 'pending_review' as const,
-                notes: createDocumentDto.notes,
+                notes: notes,
             };
 
             const document = await this.documentsService.create(documentData);
