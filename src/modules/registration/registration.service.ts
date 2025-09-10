@@ -7,7 +7,7 @@ export interface CompleteRegistrationData {
     // User data
     userId: string;
     userPhone: string;
-    
+
     // Personal data (from step 1)
     fullName: string;
     email?: string;
@@ -18,7 +18,7 @@ export interface CompleteRegistrationData {
     emergencyContactName: string;
     emergencyContactPhone: string;
     avatarUrl?: string;
-    
+
     // Vehicle data (from step 2)
     vehicleMake: string;
     vehicleModel: string;
@@ -29,7 +29,7 @@ export interface CompleteRegistrationData {
     vehicleClassId: string;
     driverLicenseNumber: string;
     driverLicenseExpiry: string;
-    
+
     // Document URLs (from step 3)
     documentUrls: {
         driver_license?: string;
@@ -59,33 +59,33 @@ export class RegistrationService {
         vehicleId: string;
     }> {
         const client = await this.postgresService.getClient();
-        
+
         try {
             await client.query('BEGIN');
             this.logger.log(`🚀 Starting complete driver registration for user: ${data.userId}`);
 
             // 1. Update user record with personal information
             await this.updateUserRecord(client, data);
-            
+
             // 2. Create driver profile
             const driverProfileId = await this.createDriverProfile(client, data);
-            
+
             // 3. Create vehicle record
             const vehicleId = await this.createVehicleRecord(client, data, driverProfileId);
-            
+
             // 4. Create wallet account for the driver
             await this.createWalletAccount(client, data.userId);
-            
+
             // 5. Assign driver role to user
             await this.assignDriverRole(client, data.userId);
-            
+
             // 6. Update document records with proper relationships
             await this.updateDocumentRecords(client, data);
 
             await client.query('COMMIT');
-            
+
             this.logger.log(`✅ Driver registration completed successfully for user: ${data.userId}`);
-            
+
             return {
                 success: true,
                 message: 'Driver registration completed successfully',
@@ -93,7 +93,7 @@ export class RegistrationService {
                 driverProfileId,
                 vehicleId,
             };
-            
+
         } catch (error) {
             await client.query('ROLLBACK');
             this.logger.error(`❌ Driver registration failed for user ${data.userId}:`, error);
@@ -108,7 +108,7 @@ export class RegistrationService {
      */
     private async updateUserRecord(client: any, data: CompleteRegistrationData): Promise<void> {
         this.logger.log(`📝 Updating user record for: ${data.userId}`);
-        
+
         const query = `
             UPDATE users SET
                 full_name = $1,
@@ -121,7 +121,7 @@ export class RegistrationService {
                 updated_at = NOW()
             WHERE id = $8
         `;
-        
+
         const values = [
             data.fullName,
             data.email || null,
@@ -132,7 +132,7 @@ export class RegistrationService {
             data.emergencyContactPhone,
             data.userId
         ];
-        
+
         await client.query(query, values);
         this.logger.log(`✅ User record updated for: ${data.userId}`);
     }
@@ -142,7 +142,7 @@ export class RegistrationService {
      */
     private async createDriverProfile(client: any, data: CompleteRegistrationData): Promise<string> {
         this.logger.log(`👤 Creating driver profile for: ${data.userId}`);
-        
+
         const query = `
             INSERT INTO driver_profiles (
                 user_id, first_name, last_name, date_of_birth, gender, city,
@@ -152,11 +152,11 @@ export class RegistrationService {
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
             RETURNING id
         `;
-        
+
         const nameParts = data.fullName.split(' ');
         const firstName = nameParts[0] || '';
         const lastName = nameParts.slice(1).join(' ') || '';
-        
+
         const values = [
             data.userId,
             firstName,
@@ -172,10 +172,10 @@ export class RegistrationService {
             false, // Not available initially
             false  // Not online initially
         ];
-        
+
         const result = await client.query(query, values);
         const driverProfileId = result.rows[0].id;
-        
+
         this.logger.log(`✅ Driver profile created with ID: ${driverProfileId}`);
         return driverProfileId;
     }
@@ -185,7 +185,7 @@ export class RegistrationService {
      */
     private async createVehicleRecord(client: any, data: CompleteRegistrationData, driverProfileId: string): Promise<string> {
         this.logger.log(`🚗 Creating vehicle record for driver: ${driverProfileId}`);
-        
+
         const query = `
             INSERT INTO vehicles (
                 driver_id, vehicle_type_id, name, make, model, year,
@@ -193,9 +193,9 @@ export class RegistrationService {
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
             RETURNING id
         `;
-        
+
         const vehicleName = `${data.vehicleYear} ${data.vehicleMake} ${data.vehicleModel}`;
-        
+
         const values = [
             driverProfileId,
             parseInt(data.vehicleClassId), // Convert to integer
@@ -208,10 +208,10 @@ export class RegistrationService {
             data.vehicleTransmission,
             'pending_review' // Initial verification status
         ];
-        
+
         const result = await client.query(query, values);
         const vehicleId = result.rows[0].id;
-        
+
         this.logger.log(`✅ Vehicle created with ID: ${vehicleId}`);
         return vehicleId;
     }
@@ -221,13 +221,13 @@ export class RegistrationService {
      */
     private async createWalletAccount(client: any, userId: string): Promise<void> {
         this.logger.log(`💰 Creating wallet account for user: ${userId}`);
-        
+
         const query = `
             INSERT INTO wallet_accounts (user_id, balance_cents, currency, is_active)
             VALUES ($1, 0, 'ETB', true)
             ON CONFLICT (user_id) DO NOTHING
         `;
-        
+
         await client.query(query, [userId]);
         this.logger.log(`✅ Wallet account created for user: ${userId}`);
     }
@@ -237,24 +237,24 @@ export class RegistrationService {
      */
     private async assignDriverRole(client: any, userId: string): Promise<void> {
         this.logger.log(`🔐 Assigning driver role to user: ${userId}`);
-        
+
         // First, get the driver role ID
         const roleQuery = `SELECT id FROM roles WHERE name = 'driver' AND is_active = true`;
         const roleResult = await client.query(roleQuery);
-        
+
         if (roleResult.rows.length === 0) {
             throw new BadRequestException('Driver role not found in database');
         }
-        
+
         const roleId = roleResult.rows[0].id;
-        
+
         // Assign the role to the user
         const assignQuery = `
             INSERT INTO user_roles (user_id, role_id, created_at)
             VALUES ($1, $2, NOW())
             ON CONFLICT (user_id, role_id) DO NOTHING
         `;
-        
+
         await client.query(assignQuery, [userId, roleId]);
         this.logger.log(`✅ Driver role assigned to user: ${userId}`);
     }
@@ -264,7 +264,7 @@ export class RegistrationService {
      */
     private async updateDocumentRecords(client: any, data: CompleteRegistrationData): Promise<void> {
         this.logger.log(`📄 Updating document records for user: ${data.userId}`);
-        
+
         // Update existing documents with verification status
         const updateQuery = `
             UPDATE documents SET
@@ -272,7 +272,7 @@ export class RegistrationService {
                 updated_at = NOW()
             WHERE user_id = $1 AND doc_type IN ('profile_picture', 'driver_license', 'vehicle_registration', 'insurance')
         `;
-        
+
         await client.query(updateQuery, [data.userId]);
         this.logger.log(`✅ Document records updated for user: ${data.userId}`);
     }
@@ -298,9 +298,9 @@ export class RegistrationService {
                 LEFT JOIN vehicles v ON dp.id = v.driver_id
                 WHERE u.id = $1
             `;
-            
+
             const userResult = await this.postgresService.query(userQuery, [userId]);
-            
+
             if (userResult.rows.length === 0) {
                 return {
                     isComplete: false,
@@ -308,19 +308,19 @@ export class RegistrationService {
                     missingFields: ['User not found']
                 };
             }
-            
+
             const user = userResult.rows[0];
             const missingFields: string[] = [];
-            
+
             // Check personal info completion
             const personalInfoComplete = !!(
-                user.full_name && 
-                user.date_of_birth && 
-                user.gender && 
-                user.emergency_contact_name && 
+                user.full_name &&
+                user.date_of_birth &&
+                user.gender &&
+                user.emergency_contact_name &&
                 user.emergency_contact_phone
             );
-            
+
             if (!personalInfoComplete) {
                 if (!user.full_name) missingFields.push('Full name');
                 if (!user.date_of_birth) missingFields.push('Date of birth');
@@ -328,33 +328,33 @@ export class RegistrationService {
                 if (!user.emergency_contact_name) missingFields.push('Emergency contact name');
                 if (!user.emergency_contact_phone) missingFields.push('Emergency contact phone');
             }
-            
+
             // Check vehicle info completion
             const vehicleInfoComplete = !!(user.driver_profile_id && user.vehicle_id);
-            
+
             if (!vehicleInfoComplete) {
                 if (!user.driver_profile_id) missingFields.push('Driver profile');
                 if (!user.vehicle_id) missingFields.push('Vehicle information');
             }
-            
+
             // Check documents completion
             const documentsQuery = `
                 SELECT doc_type FROM documents 
                 WHERE user_id = $1 AND doc_type IN ('profile_picture', 'driver_license', 'vehicle_registration', 'insurance')
             `;
-            
+
             const docsResult = await this.postgresService.query(documentsQuery, [userId]);
             const uploadedDocs = docsResult.rows.map(row => row.doc_type);
             const requiredDocs = ['profile_picture', 'driver_license', 'vehicle_registration', 'insurance'];
             const documentsComplete = requiredDocs.every(doc => uploadedDocs.includes(doc));
-            
+
             if (!documentsComplete) {
                 const missingDocs = requiredDocs.filter(doc => !uploadedDocs.includes(doc));
                 missingFields.push(...missingDocs.map(doc => `${doc.replace('_', ' ')} document`));
             }
-            
+
             const isComplete = personalInfoComplete && vehicleInfoComplete && documentsComplete;
-            
+
             return {
                 isComplete,
                 steps: {
@@ -364,7 +364,7 @@ export class RegistrationService {
                 },
                 missingFields
             };
-            
+
         } catch (error) {
             this.logger.error(`Error getting registration progress for user ${userId}:`, error);
             throw new InternalServerErrorException('Failed to get registration progress');

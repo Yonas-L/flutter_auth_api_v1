@@ -15,7 +15,7 @@ export class VehicleTypesController {
     async findAll(@Query('category') category?: string) {
         try {
             this.logger.log('📋 Fetching vehicle types');
-            
+
             let vehicleTypes;
             if (category) {
                 vehicleTypes = await this.vehicleTypesService.findByCategory(category);
@@ -48,9 +48,9 @@ export class VehicleTypesController {
             }
 
             this.logger.log(`📋 Fetching vehicle type: ${vehicleTypeId}`);
-            
+
             const vehicleType = await this.vehicleTypesService.findById(vehicleTypeId);
-            
+
             if (!vehicleType) {
                 return {
                     success: false,
@@ -77,7 +77,7 @@ export class VehicleTypesController {
     async getCategories() {
         try {
             this.logger.log('📋 Fetching vehicle type categories');
-            
+
             const categories = await this.vehicleTypesService.getCategories();
 
             this.logger.log(`✅ Found ${categories.length} categories`);

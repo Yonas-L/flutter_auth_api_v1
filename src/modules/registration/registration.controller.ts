@@ -15,23 +15,23 @@ export class RegistrationController {
     async completeDriverRegistration(@Body() body: CompleteRegistrationData) {
         try {
             this.logger.log(`🚀 Starting complete driver registration for user: ${body.userId}`);
-            
+
             // Validate required fields
             this.validateRegistrationData(body);
-            
+
             const result = await this.registrationService.completeDriverRegistration(body);
-            
+
             this.logger.log(`✅ Driver registration completed successfully for user: ${body.userId}`);
-            
+
             return {
                 success: true,
                 message: 'Driver registration completed successfully',
                 data: result
             };
-            
+
         } catch (error) {
             this.logger.error(`❌ Driver registration failed for user ${body.userId}:`, error);
-            
+
             throw new HttpException(
                 {
                     success: false,
@@ -51,17 +51,17 @@ export class RegistrationController {
     async getRegistrationProgress(@Param('userId') userId: string) {
         try {
             this.logger.log(`📊 Getting registration progress for user: ${userId}`);
-            
+
             const progress = await this.registrationService.getRegistrationProgress(userId);
-            
+
             return {
                 success: true,
                 data: progress
             };
-            
+
         } catch (error) {
             this.logger.error(`❌ Failed to get registration progress for user ${userId}:`, error);
-            
+
             throw new HttpException(
                 {
                     success: false,
@@ -86,7 +86,7 @@ export class RegistrationController {
         ];
 
         const missingFields = requiredFields.filter(field => !data[field as keyof CompleteRegistrationData]);
-        
+
         if (missingFields.length > 0) {
             throw new HttpException(
                 {
