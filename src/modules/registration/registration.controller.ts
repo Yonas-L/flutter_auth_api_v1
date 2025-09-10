@@ -1,5 +1,6 @@
 import { Controller, Post, Get, Body, Param, Logger, HttpException, HttpStatus } from '@nestjs/common';
-import { RegistrationService, CompleteRegistrationData } from './registration.service';
+import { RegistrationService } from './registration.service';
+import type { CompleteRegistrationData } from './registration.service';
 
 @Controller('api/registration')
 export class RegistrationController {
