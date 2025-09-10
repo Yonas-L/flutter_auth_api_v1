@@ -355,19 +355,17 @@ export class RegistrationService {
                     // Update existing document
                     const updateQuery = `
                         UPDATE documents SET
-                            file_path = $3,
-                            public_url = $4,
+                            file_path = $1,
+                            public_url = $2,
                             verification_status = 'pending_review',
                             updated_at = NOW()
-                        WHERE id = $5
+                        WHERE id = $3
                     `;
 
                     const documentId = checkResult.rows[0].id;
                     const filePath = documentUrl.split('/').slice(-2).join('/'); // Extract path from URL
 
                     await client.query(updateQuery, [
-                        data.userId,
-                        docType,
                         filePath,
                         documentUrl,
                         documentId
