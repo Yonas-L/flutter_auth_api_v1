@@ -1,6 +1,6 @@
 import { Body, Controller, Headers, HttpException, HttpStatus, Post, Get, Logger } from '@nestjs/common';
 import { OtpService } from './otp.service';
-import { SupabaseAuthService } from './supabase-auth.service';
+import { AuthPostgresService } from '../auth/auth-postgres.service';
 
 interface SendOtpBody {
   phoneNumber: string;
@@ -21,7 +21,7 @@ export class OtpController {
 
   constructor(
     private readonly otpService: OtpService,
-    private readonly supaAuth: SupabaseAuthService,
+    private readonly authPostgresService: AuthPostgresService,
   ) { }
 
   private requireBearer(@Headers('authorization') authHeader?: string) {
@@ -203,8 +203,8 @@ export class OtpController {
 
       this.logger.log(`OTP verified successfully for ${normalizedPhone}`);
 
-      // Create or get Supabase user and issue tokens
-      const tokens = await this.supaAuth.createOrGetTokens(normalizedPhone, body?.name);
+      // Create or get PostgreSQL user and issue tokens
+      const tokens = await this.authPostgresService.verifyOtpForPhone(normalizedPhone, otp);
 
       this.logger.log(`User authenticated successfully for ${normalizedPhone}`);
 
@@ -213,9 +213,7 @@ export class OtpController {
         message: 'OTP verified successfully',
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
-        tokenType: tokens.tokenType,
-        expiresIn: tokens.expiresIn,
-        user: tokens.user ?? undefined,
+        user: tokens.user,
         phoneNumber: normalizedPhone
       };
 

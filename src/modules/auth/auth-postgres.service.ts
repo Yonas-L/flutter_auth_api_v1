@@ -88,12 +88,12 @@ export class AuthPostgresService {
             if (!user) {
                 user = await this.usersRepository.create({
                     phone_number: normalizedPhone,
-                    user_type: 'passenger',
+                    user_type: 'driver', // Driver app creates driver users
                     is_phone_verified: true,
                     is_active: true,
                     status: 'verified',
                 });
-                this.logger.log(`✅ Created new user: ${user.id}`);
+                this.logger.log(`✅ Created new driver user: ${user.id}`);
             } else {
                 // Update last login and verification status
                 await this.usersRepository.updateLastLogin(user.id);
