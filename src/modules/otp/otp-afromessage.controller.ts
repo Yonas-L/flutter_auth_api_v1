@@ -1,6 +1,7 @@
 import { Controller, Post, Get, Body, Query, Param, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { AfroMessageService } from './afro-message.service';
 import { OtpService } from './otp.service';
+import { AuthPostgresService } from '../auth/auth-postgres.service';
 
 export interface SendOtpRequest {
     to: string;
@@ -21,7 +22,8 @@ export class OtpAfroMessageController {
 
     constructor(
         private readonly afroMessageService: AfroMessageService,
-        private readonly otpService: OtpService
+        private readonly otpService: OtpService,
+        private readonly authPostgresService: AuthPostgresService
     ) { }
 
     /**
@@ -110,6 +112,35 @@ export class OtpAfroMessageController {
                 // Delete OTP from database after successful verification
                 await this.otpService.deleteOtpAfterVerification(request.to, request.code);
                 this.logger.log(`✅ OTP verified successfully for ${request.to}`);
+
+                // Create or get PostgreSQL user and issue tokens
+                try {
+                    const tokens = await this.authPostgresService.verifyOtpForPhone(request.to, request.code);
+                    this.logger.log(`✅ User authenticated successfully for ${request.to}`);
+
+                    return {
+                        acknowledge: 'success',
+                        response: {
+                            valid: result.valid,
+                            to: request.to,
+                            message: 'OTP verified successfully'
+                        },
+                        accessToken: tokens.accessToken,
+                        refreshToken: tokens.refreshToken,
+                        user: tokens.user
+                    };
+                } catch (authError) {
+                    this.logger.error(`❌ Error creating user for ${request.to}:`, authError);
+                    // Still return success for OTP verification, but without user creation
+                    return {
+                        acknowledge: 'success',
+                        response: {
+                            valid: result.valid,
+                            to: request.to,
+                            message: 'OTP verified successfully'
+                        }
+                    };
+                }
             }
 
             return {
