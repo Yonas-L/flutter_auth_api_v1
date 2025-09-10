@@ -100,17 +100,12 @@ export class OtpService {
       // Increment attempts
       await this.otpRepository.incrementAttempts(otpRecord.id);
 
-      // Use AfroMessage to verify the OTP
-      const verifyResult = await this.afroMessageService.verifyOtp(
-        phoneNumber,
-        code
-        // TODO: Add verification_id after database migration
-        // otpRecord.verification_id
-      );
+      // Verify OTP against stored code
+      const isValidCode = otpRecord.code_hash === code;
 
-      this.logger.log(`✅ AfroMessage verification result for ${phoneNumber}: ${verifyResult.valid}`);
+      this.logger.log(`✅ OTP verification result for ${phoneNumber}: ${isValidCode}`);
 
-      if (verifyResult.success && verifyResult.valid) {
+      if (isValidCode) {
         // Mark as used first (for audit trail)
         await this.otpRepository.markAsUsed(otpRecord.id);
 
@@ -121,7 +116,7 @@ export class OtpService {
         return { valid: true };
       }
 
-      return { valid: false, message: verifyResult.error || 'Invalid OTP code' };
+      return { valid: false, message: 'Invalid OTP code' };
     } catch (error) {
       this.logger.error(`Error verifying OTP for ${phoneNumber}:`, error);
       throw error;

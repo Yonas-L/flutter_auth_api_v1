@@ -77,7 +77,7 @@ export class AuthPostgresService {
             const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
 
             // Verify OTP
-            const otpResult = await this.otpService.verifyOtpForPhone(normalizedPhone, otp, 'login');
+            const otpResult = await this.otpService.verifyOtpForPhone(normalizedPhone, otp, 'registration');
 
             if (!otpResult.valid) {
                 throw new BadRequestException(otpResult.message || 'Invalid OTP');

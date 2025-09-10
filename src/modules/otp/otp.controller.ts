@@ -81,78 +81,8 @@ export class OtpController {
     this.logger.log(`Sending OTP to ${normalizedPhone} for purpose: ${purpose}`);
 
     try {
-      // Generate OTP
-      const code = await this.otpService.generateOtp();
-
-      // Prepare message
-      const pr = process.env.AFRO_PR ?? 'Your Arada Transport verification code is';
-      const ps = process.env.AFRO_PS ?? 'valid for 10 minutes';
-      const message = `${pr} ${code} ${ps}`;
-
-      // AfroMessage configuration
-      const apiUrl = 'https://api.afromessage.com/api/send';
-      const from = process.env.AFRO_FROM || '';
-      const sender = process.env.AFRO_SENDER || '';
-      const afroToken = process.env.AFRO_SMS_KEY || '';
-
-      // Debug logging
-      this.logger.log(`[DEBUG] AFRO_SMS_KEY length: ${afroToken ? afroToken.length : 0}`);
-      this.logger.log(`[DEBUG] AFRO_SMS_KEY first 20 chars: ${afroToken ? afroToken.substring(0, 20) + '...' : 'EMPTY'}`);
-      this.logger.log(`[DEBUG] AFRO_FROM: ${from}`);
-      this.logger.log(`[DEBUG] AFRO_SENDER: ${sender}`);
-
-      const url = new URL(apiUrl);
-      url.searchParams.set('from', from);
-      // Temporarily remove sender parameter until approved
-      // if (sender) url.searchParams.set('sender', sender);
-      url.searchParams.set('to', normalizedPhone);
-      url.searchParams.set('message', message);
-
-      this.logger.log(`AfroMessage URL: ${url.toString()}`);
-
-      if (!afroToken) {
-        // Development mode: skip external call
-        this.logger.error(`[ERROR] AFRO_SMS_KEY is empty or undefined - SMS will not be sent!`);
-        this.logger.error(`[ERROR] Environment variables: AFRO_SMS_KEY=${process.env.AFRO_SMS_KEY}`);
-        this.logger.error(`[ERROR] All env vars: ${JSON.stringify({
-          AFRO_SMS_KEY: process.env.AFRO_SMS_KEY ? 'SET' : 'NOT SET',
-          AFRO_FROM: process.env.AFRO_FROM,
-          AFRO_SENDER: process.env.AFRO_SENDER,
-          NODE_ENV: process.env.NODE_ENV
-        })}`);
-        this.logger.warn(`[DEV] Skipping AfroMessage send. Phone=${normalizedPhone} Code=${code} Message="${message}"`);
-      } else {
-        // Send SMS via AfroMessage
-        this.logger.log(`[DEBUG] Making AfroMessage request to: ${url.toString()}`);
-        this.logger.log(`[DEBUG] Authorization header: Bearer ${afroToken.substring(0, 20)}...`);
-
-        const resp = await fetch(url.toString(), {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${afroToken}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!resp.ok) {
-          const errorText = await resp.text();
-          this.logger.error(`AfroMessage error ${resp.status}: ${errorText}`);
-          throw new HttpException(`SMS service error: ${resp.status}`, HttpStatus.BAD_GATEWAY);
-        }
-
-        const responseData = await resp.json();
-        this.logger.log(`AfroMessage response: ${JSON.stringify(responseData)}`);
-
-        if (responseData.acknowledge !== 'success') {
-          this.logger.error(`[ERROR] AfroMessage failed: ${JSON.stringify(responseData)}`);
-          throw new HttpException(`SMS service error: ${responseData.response?.message || responseData.response?.errors || 'Unknown error'}`, HttpStatus.BAD_GATEWAY);
-        }
-
-        this.logger.log(`[SUCCESS] AfroMessage SMS sent successfully! Message ID: ${responseData.response?.message_id}`);
-      }
-
-      // Store OTP in database
-      await this.otpService.createOtpForPhone(normalizedPhone, 10, 'registration');
+      // Let the OTP service handle everything (generation, SMS sending, and database storage)
+      await this.otpService.createOtpForPhone(normalizedPhone, 10, purpose);
 
       this.logger.log(`OTP sent successfully to ${normalizedPhone}`);
 
@@ -195,7 +125,7 @@ export class OtpController {
 
     try {
       // Verify OTP
-      const result = await this.otpService.verifyOtpForPhone(normalizedPhone, otp);
+      const result = await this.otpService.verifyOtpForPhone(normalizedPhone, otp, purpose);
       if (!result.valid) {
         this.logger.warn(`Invalid OTP attempt for ${normalizedPhone}: ${result.message}`);
         throw new HttpException(result.message || 'Invalid OTP', HttpStatus.BAD_REQUEST);
