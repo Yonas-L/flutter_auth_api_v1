@@ -38,6 +38,16 @@ export interface CompleteRegistrationData {
     };
 }
 
+export interface CompleteRegistrationResponse {
+    success: boolean;
+    message: string;
+    userId: string;
+    driverProfileId: string;
+    vehicleId: string;
+    verificationStatus: string;
+    redirectTo: string;
+}
+
 @Injectable()
 export class RegistrationService {
     private readonly logger = new Logger(RegistrationService.name);
@@ -51,13 +61,7 @@ export class RegistrationService {
     /**
      * Complete driver registration with all data in a single transaction
      */
-    async completeDriverRegistration(data: CompleteRegistrationData): Promise<{
-        success: boolean;
-        message: string;
-        userId: string;
-        driverProfileId: string;
-        vehicleId: string;
-    }> {
+    async completeDriverRegistration(data: CompleteRegistrationData): Promise<CompleteRegistrationResponse> {
         const client = await this.postgresService.getClient();
 
         try {
@@ -84,7 +88,15 @@ export class RegistrationService {
 
             await client.query('COMMIT');
 
-            this.logger.log(`✅ Driver registration completed successfully for user: ${data.userId}`);
+            // Get the verification status for redirection
+            const statusQuery = `
+                SELECT verification_status FROM driver_profiles 
+                WHERE user_id = $1
+            `;
+            const statusResult = await client.query(statusQuery, [data.userId]);
+            const verificationStatus = statusResult.rows[0]?.verification_status || 'pending_review';
+
+            this.logger.log(`✅ Driver registration completed successfully for user: ${data.userId} with status: ${verificationStatus}`);
 
             return {
                 success: true,
@@ -92,6 +104,8 @@ export class RegistrationService {
                 userId: data.userId,
                 driverProfileId,
                 vehicleId,
+                verificationStatus,
+                redirectTo: verificationStatus === 'verified' ? 'home' : 'pending_verification'
             };
 
         } catch (error) {
@@ -138,10 +152,10 @@ export class RegistrationService {
     }
 
     /**
-     * Create driver profile
+     * Create or update driver profile
      */
     private async createDriverProfile(client: any, data: CompleteRegistrationData): Promise<string> {
-        this.logger.log(`👤 Creating driver profile for: ${data.userId}`);
+        this.logger.log(`👤 Creating or updating driver profile for: ${data.userId}`);
 
         const query = `
             INSERT INTO driver_profiles (
@@ -150,6 +164,18 @@ export class RegistrationService {
                 driver_license_number, driver_license_expiry,
                 verification_status, is_available, is_online
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            ON CONFLICT (user_id) DO UPDATE SET
+                first_name = EXCLUDED.first_name,
+                last_name = EXCLUDED.last_name,
+                date_of_birth = EXCLUDED.date_of_birth,
+                gender = EXCLUDED.gender,
+                city = EXCLUDED.city,
+                emergency_contact_name = EXCLUDED.emergency_contact_name,
+                emergency_contact_phone = EXCLUDED.emergency_contact_phone,
+                driver_license_number = EXCLUDED.driver_license_number,
+                driver_license_expiry = EXCLUDED.driver_license_expiry,
+                verification_status = EXCLUDED.verification_status,
+                updated_at = NOW()
             RETURNING id
         `;
 
@@ -176,44 +202,89 @@ export class RegistrationService {
         const result = await client.query(query, values);
         const driverProfileId = result.rows[0].id;
 
-        this.logger.log(`✅ Driver profile created with ID: ${driverProfileId}`);
+        this.logger.log(`✅ Driver profile created/updated with ID: ${driverProfileId}`);
         return driverProfileId;
     }
 
     /**
-     * Create vehicle record
+     * Create or update vehicle record
      */
     private async createVehicleRecord(client: any, data: CompleteRegistrationData, driverProfileId: string): Promise<string> {
-        this.logger.log(`🚗 Creating vehicle record for driver: ${driverProfileId}`);
+        this.logger.log(`🚗 Creating or updating vehicle record for driver: ${driverProfileId}`);
 
-        const query = `
-            INSERT INTO vehicles (
-                driver_id, vehicle_type_id, name, make, model, year,
-                plate_number, color, transmission, verification_status
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id
-        `;
+        // First, check if vehicle already exists for this driver
+        const checkQuery = `SELECT id FROM vehicles WHERE driver_id = $1 LIMIT 1`;
+        const checkResult = await client.query(checkQuery, [driverProfileId]);
 
-        const vehicleName = `${data.vehicleYear} ${data.vehicleMake} ${data.vehicleModel}`;
+        if (checkResult.rows.length > 0) {
+            // Update existing vehicle
+            const updateQuery = `
+                UPDATE vehicles SET
+                    vehicle_type_id = $2,
+                    name = $3,
+                    make = $4,
+                    model = $5,
+                    year = $6,
+                    plate_number = $7,
+                    color = $8,
+                    transmission = $9,
+                    verification_status = $10,
+                    updated_at = NOW()
+                WHERE driver_id = $1
+                RETURNING id
+            `;
 
-        const values = [
-            driverProfileId,
-            parseInt(data.vehicleClassId), // Convert to integer
-            vehicleName,
-            data.vehicleMake,
-            data.vehicleModel,
-            parseInt(data.vehicleYear),
-            data.vehiclePlateNumber,
-            data.vehicleColor,
-            data.vehicleTransmission,
-            'pending_review' // Initial verification status
-        ];
+            const vehicleName = `${data.vehicleYear} ${data.vehicleMake} ${data.vehicleModel}`;
 
-        const result = await client.query(query, values);
-        const vehicleId = result.rows[0].id;
+            const values = [
+                driverProfileId,
+                parseInt(data.vehicleClassId),
+                vehicleName,
+                data.vehicleMake,
+                data.vehicleModel,
+                parseInt(data.vehicleYear),
+                data.vehiclePlateNumber,
+                data.vehicleColor,
+                data.vehicleTransmission,
+                'pending_review'
+            ];
 
-        this.logger.log(`✅ Vehicle created with ID: ${vehicleId}`);
-        return vehicleId;
+            const result = await client.query(updateQuery, values);
+            const vehicleId = result.rows[0].id;
+
+            this.logger.log(`✅ Vehicle updated with ID: ${vehicleId}`);
+            return vehicleId;
+        } else {
+            // Create new vehicle
+            const insertQuery = `
+                INSERT INTO vehicles (
+                    driver_id, vehicle_type_id, name, make, model, year,
+                    plate_number, color, transmission, verification_status
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                RETURNING id
+            `;
+
+            const vehicleName = `${data.vehicleYear} ${data.vehicleMake} ${data.vehicleModel}`;
+
+            const values = [
+                driverProfileId,
+                parseInt(data.vehicleClassId),
+                vehicleName,
+                data.vehicleMake,
+                data.vehicleModel,
+                parseInt(data.vehicleYear),
+                data.vehiclePlateNumber,
+                data.vehicleColor,
+                data.vehicleTransmission,
+                'pending_review'
+            ];
+
+            const result = await client.query(insertQuery, values);
+            const vehicleId = result.rows[0].id;
+
+            this.logger.log(`✅ Vehicle created with ID: ${vehicleId}`);
+            return vehicleId;
+        }
     }
 
     /**
@@ -265,16 +336,70 @@ export class RegistrationService {
     private async updateDocumentRecords(client: any, data: CompleteRegistrationData): Promise<void> {
         this.logger.log(`📄 Updating document records for user: ${data.userId}`);
 
-        // Update existing documents with verification status
-        const updateQuery = `
-            UPDATE documents SET
-                verification_status = 'pending_review',
-                updated_at = NOW()
-            WHERE user_id = $1 AND doc_type IN ('profile_picture', 'driver_license', 'vehicle_registration', 'insurance')
-        `;
+        // Process each document type
+        const documentTypes = ['profile_picture', 'driver_license', 'vehicle_registration', 'insurance'];
+        
+        for (const docType of documentTypes) {
+            const documentUrl = data.documentUrls?.[docType];
+            if (documentUrl) {
+                // Check if document already exists for this user and type
+                const checkQuery = `
+                    SELECT id FROM documents 
+                    WHERE user_id = $1 AND doc_type = $2 
+                    ORDER BY created_at DESC 
+                    LIMIT 1
+                `;
+                const checkResult = await client.query(checkQuery, [data.userId, docType]);
 
-        await client.query(updateQuery, [data.userId]);
-        this.logger.log(`✅ Document records updated for user: ${data.userId}`);
+                if (checkResult.rows.length > 0) {
+                    // Update existing document
+                    const updateQuery = `
+                        UPDATE documents SET
+                            file_path = $3,
+                            public_url = $4,
+                            verification_status = 'pending_review',
+                            updated_at = NOW()
+                        WHERE id = $5
+                    `;
+                    
+                    const documentId = checkResult.rows[0].id;
+                    const filePath = documentUrl.split('/').slice(-2).join('/'); // Extract path from URL
+                    
+                    await client.query(updateQuery, [
+                        data.userId,
+                        docType,
+                        filePath,
+                        documentUrl,
+                        documentId
+                    ]);
+                    
+                    this.logger.log(`✅ Updated existing ${docType} document for user: ${data.userId}`);
+                } else {
+                    // Create new document record
+                    const insertQuery = `
+                        INSERT INTO documents (
+                            user_id, doc_type, file_path, public_url, 
+                            verification_status, notes
+                        ) VALUES ($1, $2, $3, $4, $5, $6)
+                    `;
+                    
+                    const filePath = documentUrl.split('/').slice(-2).join('/'); // Extract path from URL
+                    
+                    await client.query(insertQuery, [
+                        data.userId,
+                        docType,
+                        filePath,
+                        documentUrl,
+                        'pending_review',
+                        `Uploaded during registration - ${docType}`
+                    ]);
+                    
+                    this.logger.log(`✅ Created new ${docType} document for user: ${data.userId}`);
+                }
+            }
+        }
+
+        this.logger.log(`✅ Document records processed for user: ${data.userId}`);
     }
 
     /**
