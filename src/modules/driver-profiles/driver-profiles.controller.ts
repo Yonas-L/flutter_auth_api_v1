@@ -22,7 +22,7 @@ import { DriverProfileResponseDto, DriverRegistrationProgressDto, DriverStatsDto
 export class DriverProfilesController {
   private readonly logger = new Logger(DriverProfilesController.name);
 
-  constructor(private readonly driverProfilesService: DriverProfilesService) {}
+  constructor(private readonly driverProfilesService: DriverProfilesService) { }
 
   /**
    * Create a new driver profile
@@ -59,7 +59,7 @@ export class DriverProfilesController {
     try {
       const userId = req.user.id;
       const profile = await this.driverProfilesService.findByUserId(userId);
-      
+
       if (!profile) {
         throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
       }
@@ -83,7 +83,7 @@ export class DriverProfilesController {
     try {
       const userId = req.user.id;
       const profile = await this.driverProfilesService.findByUserId(userId);
-      
+
       if (!profile) {
         throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
       }
@@ -168,7 +168,7 @@ export class DriverProfilesController {
   ): Promise<DriverProfileResponseDto[]> {
     try {
       const filters: any = {};
-      
+
       if (verificationStatus) {
         filters.verification_status = verificationStatus;
       }
