@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { DocumentsRepository } from '../database/repositories/documents.repository';
-import { UsersRepository } from '../database/repositories/users.repository';
+import { UsersPostgresRepository } from '../database/repositories/users-postgres.repository';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { DocumentVerifyDto } from './dto/file-upload.dto';
@@ -39,7 +39,7 @@ export class DocumentsService {
 
     constructor(
         private readonly documentsRepository: DocumentsRepository,
-        private readonly usersRepository: UsersRepository,
+        private readonly usersRepository: UsersPostgresRepository,
     ) { }
 
     /**
