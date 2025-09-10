@@ -14,7 +14,8 @@ import {
 import {
     UsersPostgresRepository,
     TripsPostgresRepository,
-    OtpPostgresRepository
+    OtpPostgresRepository,
+    DocumentsPostgresRepository
 } from './repositories';
 import { TestPostgresRepositoriesService } from './test-postgres-repositories.service';
 
@@ -36,6 +37,7 @@ import { TestPostgresRepositoriesService } from './test-postgres-repositories.se
         UsersPostgresRepository,
         TripsPostgresRepository,
         OtpPostgresRepository,
+        DocumentsPostgresRepository,
         // Test service
         TestPostgresRepositoriesService,
     ],
@@ -53,6 +55,7 @@ import { TestPostgresRepositoriesService } from './test-postgres-repositories.se
         UsersPostgresRepository,
         TripsPostgresRepository,
         OtpPostgresRepository,
+        DocumentsPostgresRepository,
     ],
 })
 export class DatabaseModule { }

@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
-import { DocumentsRepository } from '../database/repositories/documents.repository';
+import { DocumentsPostgresRepository } from '../database/repositories/documents-postgres.repository';
 import { UsersPostgresRepository } from '../database/repositories/users-postgres.repository';
 import { CreateDocumentDto } from './dto/create-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
@@ -38,7 +38,7 @@ export class DocumentsService {
     private readonly MAX_FILE_SIZE = 10 * 1024 * 1024;
 
     constructor(
-        private readonly documentsRepository: DocumentsRepository,
+        private readonly documentsRepository: DocumentsPostgresRepository,
         private readonly usersRepository: UsersPostgresRepository,
     ) { }
 
