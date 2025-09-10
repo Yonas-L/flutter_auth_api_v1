@@ -52,14 +52,13 @@ export class CloudinaryService {
                 folder: options.folder || 'arada-transport',
                 resource_type: options.resource_type || 'auto',
                 quality: options.quality || 'auto',
-                format: options.format || 'auto',
                 ...options,
             };
 
             // Upload file to Cloudinary
             // Handle case where file.buffer might be undefined (common in some Multer configurations)
             let fileData: string;
-            
+
             if (file.buffer) {
                 // Use buffer if available
                 fileData = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
@@ -253,7 +252,6 @@ export class CloudinaryService {
                 public_id: `avatar_${Date.now()}`,
                 resource_type: 'image',
                 quality: 'auto',
-                format: 'auto',
                 transformation: [
                     { width: 400, height: 400, crop: 'fill', gravity: 'face' },
                     { quality: 'auto', fetch_format: 'auto' }
@@ -299,7 +297,6 @@ export class CloudinaryService {
                 public_id: `${docType}_${Date.now()}`,
                 resource_type: file.mimetype.startsWith('image/') ? 'image' : 'raw',
                 quality: file.mimetype.startsWith('image/') ? 'auto' : undefined,
-                format: 'auto'
             };
 
             return await this.uploadFile(file, uploadOptions);
