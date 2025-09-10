@@ -97,7 +97,7 @@ export class DocumentsService {
 
             // Check if user already has an avatar
             const existingAvatars = await this.documentsRepository.findByUserIdAndType(
-                createDocumentDto.user_id, 
+                createDocumentDto.user_id,
                 'profile_picture'
             );
 
@@ -107,7 +107,7 @@ export class DocumentsService {
                 // Replace existing avatar
                 const existingAvatar = existingAvatars[0];
                 this.logger.log(`🔄 Replacing existing avatar: ${existingAvatar.id} for user ${createDocumentDto.user_id}`);
-                
+
                 // Update the existing document with new data
                 const updateData = {
                     file_path: createDocumentDto.file_path,

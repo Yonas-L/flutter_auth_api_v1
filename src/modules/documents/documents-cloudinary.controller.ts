@@ -147,7 +147,7 @@ export class DocumentsCloudinaryController {
             };
 
             // Use createOrReplaceAvatar for profile pictures to ensure only one avatar per user
-            const document = docType === 'profile_picture' 
+            const document = docType === 'profile_picture'
                 ? await this.documentsService.createOrReplaceAvatar(documentData)
                 : await this.documentsService.create(documentData);
 

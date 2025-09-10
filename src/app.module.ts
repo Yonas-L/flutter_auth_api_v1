@@ -8,7 +8,9 @@ import { AuthPostgresModule } from './modules/auth/auth-postgres.module';
 import { UsersModule } from './modules/users/users.module';
 import { DriverProfilesModule } from './modules/driver-profiles/driver-profiles.module';
 import { VehiclesModule } from './modules/vehicles/vehicles.module';
+import { VehicleTypesModule } from './modules/vehicles/vehicle-types.module';
 import { DocumentsModule } from './modules/documents/documents.module';
+import { RegistrationModule } from './modules/registration/registration.module';
 import { OtpModule } from './modules/otp/otp.module';
 import { OtpAfroMessageModule } from './modules/otp/otp-afromessage.module';
 import { MailModule } from './modules/mail/mail.module';
@@ -35,7 +37,9 @@ import { CloudinaryModule } from './modules/storage/cloudinary.module';
     UsersModule,
     DriverProfilesModule,
     VehiclesModule,
+    VehicleTypesModule,
     DocumentsModule,
+    RegistrationModule,
     OtpModule,
     OtpAfroMessageModule,
     MailModule,
