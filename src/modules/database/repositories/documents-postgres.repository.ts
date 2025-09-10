@@ -1,13 +1,14 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { BasePostgresRepository } from './base-postgres.repository';
 import { Document, CreateDocumentData, UpdateDocumentData } from '../entities/document.entity';
+import { PostgresService } from '../postgres.service';
 
 @Injectable()
 export class DocumentsPostgresRepository extends BasePostgresRepository<Document, CreateDocumentData, UpdateDocumentData> {
-    private readonly logger = new Logger(DocumentsPostgresRepository.name);
+    protected readonly tableName = 'documents';
 
-    constructor() {
-        super('documents');
+    constructor(postgresService: PostgresService) {
+        super(postgresService);
     }
 
     async findByUserId(userId: string): Promise<Document[]> {
