@@ -29,6 +29,20 @@ export class UsersController {
     ) { }
 
     /**
+     * Debug endpoint to list all users (temporary)
+     */
+    @Get('debug/all')
+    async getAllUsers() {
+        try {
+            const users = await this.usersService.findAll();
+            return users;
+        } catch (error) {
+            this.logger.error('Error getting all users:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Get current user profile (requires authentication)
      */
     @Get('profile')
