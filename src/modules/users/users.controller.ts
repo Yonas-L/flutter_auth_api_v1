@@ -54,7 +54,7 @@ export class UsersController {
             return {
                 phone,
                 found: !!user,
-                user: user ? { id: user.id, phone_e164: user.phone_e164 } : null
+                user: user ? { id: user.id, phone_number: user.phone_number } : null
             };
         } catch (error) {
             this.logger.error('Error in phone lookup debug:', error);
