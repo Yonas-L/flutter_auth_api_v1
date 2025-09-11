@@ -49,6 +49,15 @@ export class UsersService {
     }
   }
 
+  async findAll(): Promise<User[]> {
+    try {
+      return await this.usersRepository.findAll();
+    } catch (error) {
+      this.logger.error('Error finding all users:', error);
+      throw error;
+    }
+  }
+
   async updateById(id: string, updateData: UpdateUserData): Promise<User | null> {
     try {
       return await this.usersRepository.update(id, updateData);

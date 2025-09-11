@@ -49,6 +49,25 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
         }
     }
 
+    async findAll(): Promise<User[]> {
+        try {
+            const { data, error } = await this.databaseService.client
+                .from('users')
+                .select('*')
+                .order('created_at', { ascending: false });
+
+            if (error) {
+                this.logger.error('Failed to find all users:', error);
+                throw error;
+            }
+
+            return data || [];
+        } catch (error) {
+            this.logger.error('Error finding all users:', error);
+            throw error;
+        }
+    }
+
     async findByPhone(phoneE164: string): Promise<User | null> {
         try {
             const { data, error } = await this.databaseService.client

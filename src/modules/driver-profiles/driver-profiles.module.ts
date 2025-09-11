@@ -10,4 +10,4 @@ import { AuthPostgresModule } from '../auth/auth-postgres.module';
   providers: [DriverProfilesService],
   exports: [DriverProfilesService],
 })
-export class DriverProfilesModule {}
+export class DriverProfilesModule { }
