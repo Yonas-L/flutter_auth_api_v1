@@ -108,7 +108,7 @@ export class RegistrationService {
                 driverProfileId,
                 vehicleId,
                 verificationStatus,
-                redirectTo: verificationStatus === 'verified' ? 'home' : 'pending_verification'
+                redirectTo: verificationStatus === 'verified' ? 'home' : 'pending-verification'
             };
 
         } catch (error) {
