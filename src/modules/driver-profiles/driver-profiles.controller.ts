@@ -28,7 +28,7 @@ export class DriverProfilesController {
    * Create a new driver profile
    */
   @Post()
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt-postgres'))
   async createDriverProfile(
     @Request() req: any,
     @Body() createDriverProfileDto: CreateDriverProfileDto,
@@ -54,7 +54,7 @@ export class DriverProfilesController {
    * Get current driver profile (requires authentication)
    */
   @Get('profile')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt-postgres'))
   async getCurrentDriverProfile(@Request() req: any): Promise<DriverProfileResponseDto> {
     try {
       const userId = req.user.id;
@@ -78,7 +78,7 @@ export class DriverProfilesController {
    * Get driver verification status (requires authentication)
    */
   @Get('status')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt-postgres'))
   async getDriverStatus(@Request() req: any): Promise<{ verification_status: string }> {
     try {
       const userId = req.user.id;
@@ -104,7 +104,7 @@ export class DriverProfilesController {
    * Update current driver profile (requires authentication)
    */
   @Put('profile')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt-postgres'))
   async updateCurrentDriverProfile(
     @Request() req: any,
     @Body() updateDriverProfileDto: UpdateDriverProfileDto,
@@ -195,7 +195,7 @@ export class DriverProfilesController {
    * Get driver statistics (requires authentication)
    */
   @Get('stats/summary')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt-postgres'))
   async getDriverStats(@Request() req: any): Promise<DriverStatsDto> {
     try {
       const userId = req.user.id;
@@ -214,7 +214,7 @@ export class DriverProfilesController {
    * Update driver availability status (requires authentication)
    */
   @Put('availability')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt-postgres'))
   async updateDriverAvailability(
     @Request() req: any,
     @Body() body: { is_available: boolean; is_online: boolean },
@@ -242,7 +242,7 @@ export class DriverProfilesController {
    * Update driver rating (requires authentication)
    */
   @Put('rating')
-  @UseGuards(AuthGuard('jwt'))
+  @UseGuards(AuthGuard('jwt-postgres'))
   async updateDriverRating(
     @Request() req: any,
     @Body() body: { rating: number },
