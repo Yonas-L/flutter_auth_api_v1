@@ -122,9 +122,11 @@ export class AuthPostgresService {
 
             // Normalize phone number
             const normalizedPhone = this.normalizePhoneNumber(phoneNumber);
+            this.logger.log(`🔐 Normalized phone: ${normalizedPhone}`);
 
             // Find or create user
             let user = await this.usersRepository.findByPhone(normalizedPhone);
+            this.logger.log(`🔐 User lookup result: ${user ? `Found user ${user.id}` : 'User not found'}`);
             if (!user) {
                 user = await this.usersRepository.create({
                     phone_number: normalizedPhone,
