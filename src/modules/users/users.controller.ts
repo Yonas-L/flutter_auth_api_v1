@@ -43,6 +43,26 @@ export class UsersController {
     }
 
     /**
+     * Debug endpoint to test phone number lookup
+     */
+    @Get('debug/phone/:phone')
+    async debugPhoneLookup(@Param('phone') phone: string) {
+        try {
+            this.logger.log(`🔍 Debug: Looking up phone: ${phone}`);
+            const user = await this.usersService.findByPhone(phone);
+            this.logger.log(`🔍 Debug: Found user: ${user ? user.id : 'null'}`);
+            return {
+                phone,
+                found: !!user,
+                user: user ? { id: user.id, phone_e164: user.phone_e164 } : null
+            };
+        } catch (error) {
+            this.logger.error('Error in phone lookup debug:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Get current user profile (requires authentication)
      */
     @Get('profile')
