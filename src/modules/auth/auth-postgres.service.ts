@@ -87,7 +87,7 @@ export class AuthPostgresService {
             let user = await this.usersRepository.findByPhone(normalizedPhone);
             if (!user) {
                 user = await this.usersRepository.create({
-                    phone_number: normalizedPhone,
+                    phone_e164: normalizedPhone,
                     user_type: 'driver', // Driver app creates driver users
                     is_phone_verified: true,
                     is_active: true,
@@ -129,7 +129,7 @@ export class AuthPostgresService {
             this.logger.log(`🔐 User lookup result: ${user ? `Found user ${user.id}` : 'User not found'}`);
             if (!user) {
                 user = await this.usersRepository.create({
-                    phone_number: normalizedPhone,
+                    phone_e164: normalizedPhone,
                     user_type: 'driver', // Driver app creates driver users
                     is_phone_verified: true,
                     is_active: true,

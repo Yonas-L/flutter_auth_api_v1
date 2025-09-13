@@ -1,13 +1,13 @@
 export interface User {
     id: string;
-    phone_number?: string; // Updated to match new schema
+    phone_e164?: string; // Match actual database schema
     email?: string;
-    full_name?: string; // Updated from display_name
+    display_name?: string; // Match actual database schema
     avatar_url?: string;
-    user_type: 'passenger' | 'driver' | 'admin'; // New field
+    user_type: 'passenger' | 'driver' | 'admin';
     is_phone_verified: boolean;
     is_email_verified: boolean;
-    is_active: boolean; // New field
+    is_active: boolean;
     status: 'pending_verification' | 'verified' | 'active' | 'suspended' | 'deleted';
     // Passenger Backend Integration Features
     otp?: string;
@@ -26,9 +26,9 @@ export interface User {
 
 export interface CreateUserData {
     id?: string; // Auth user ID
-    phone_number?: string; // Updated to match new schema
+    phone_e164?: string; // Match actual database schema
     email?: string;
-    full_name?: string; // Updated from display_name
+    display_name?: string; // Match actual database schema
     avatar_url?: string;
     user_type?: User['user_type'];
     is_phone_verified?: boolean;
@@ -47,9 +47,9 @@ export interface CreateUserData {
 }
 
 export interface UpdateUserData {
-    phone_number?: string; // Updated to match new schema
+    phone_e164?: string; // Match actual database schema
     email?: string;
-    full_name?: string; // Updated from display_name
+    display_name?: string; // Match actual database schema
     avatar_url?: string;
     user_type?: User['user_type'];
     is_phone_verified?: boolean;
