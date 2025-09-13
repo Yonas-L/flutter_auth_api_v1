@@ -53,9 +53,9 @@ export class JwtPostgresStrategy extends PassportStrategy(Strategy, 'jwt-postgre
             // Return user data in format expected by auth guards
             return {
                 id: user.id,
-                phoneNumber: user.phone_number,
+                phoneNumber: user.phone_e164,
                 email: user.email,
-                name: user.full_name,
+                name: user.display_name,
                 userType: user.user_type,
                 status: user.status,
                 isPhoneVerified: user.is_phone_verified,

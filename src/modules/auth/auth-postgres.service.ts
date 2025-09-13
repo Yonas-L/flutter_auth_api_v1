@@ -253,7 +253,7 @@ export class AuthPostgresService {
 
             // Generate new access token
             const accessToken = this.jwtService.sign(
-                { sub: user.id, phoneNumber: user.phone_number, email: user.email },
+                { sub: user.id, phoneNumber: user.phone_e164, email: user.email },
                 {
                     secret: this.configService.get('JWT_ACCESS_SECRET'),
                     expiresIn: this.configService.get('ACCESS_EXPIRES_IN') || '15m',
@@ -303,9 +303,9 @@ export class AuthPostgresService {
 
             return {
                 id: user.id,
-                phoneNumber: user.phone_number,
+                phoneNumber: user.phone_e164,
                 email: user.email,
-                name: user.full_name,
+                name: user.display_name,
                 userType: user.user_type,
                 status: user.status,
                 isPhoneVerified: user.is_phone_verified,
@@ -345,9 +345,9 @@ export class AuthPostgresService {
             refreshToken,
             user: {
                 id: user.id,
-                phoneNumber: user.phone_number,
+                phoneNumber: user.phone_e164,
                 email: user.email,
-                name: user.full_name,
+                name: user.display_name,
                 userType: user.user_type,
                 status: user.status,
                 isPhoneVerified: user.is_phone_verified,

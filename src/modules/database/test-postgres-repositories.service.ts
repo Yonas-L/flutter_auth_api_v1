@@ -19,8 +19,8 @@ export class TestPostgresRepositoriesService {
         try {
             // Test creating a user
             const testUser = await this.usersRepository.create({
-                phone_number: '+251911234567',
-                full_name: 'Test User',
+                phone_e164: '+251911234567',
+                display_name: 'Test User',
                 email: 'test@example.com',
                 user_type: 'passenger',
                 is_phone_verified: true,
@@ -35,18 +35,18 @@ export class TestPostgresRepositoriesService {
 
             // Test finding by ID
             const foundUser = await this.usersRepository.findById(testUser.id);
-            this.logger.log(`✅ Found user by ID: ${foundUser?.full_name}`);
+            this.logger.log(`✅ Found user by ID: ${foundUser?.display_name}`);
 
             // Test finding by phone
             const userByPhone = await this.usersRepository.findByPhone('+251911234567');
-            this.logger.log(`✅ Found user by phone: ${userByPhone?.full_name}`);
+            this.logger.log(`✅ Found user by phone: ${userByPhone?.display_name}`);
 
             // Test updating user
             const updatedUser = await this.usersRepository.update(testUser.id, {
-                full_name: 'Updated Test User',
+                display_name: 'Updated Test User',
                 is_email_verified: true
             });
-            this.logger.log(`✅ Updated user: ${updatedUser?.full_name}`);
+            this.logger.log(`✅ Updated user: ${updatedUser?.display_name}`);
 
             // Test user stats
             const stats = await this.usersRepository.getUserStats();
@@ -68,8 +68,8 @@ export class TestPostgresRepositoriesService {
         try {
             // First create a test user
             const testUser = await this.usersRepository.create({
-                phone_number: '+251911234568',
-                full_name: 'Trip Test User',
+                phone_e164: '+251911234568',
+                display_name: 'Trip Test User',
                 user_type: 'passenger',
                 is_phone_verified: true,
                 is_active: true,

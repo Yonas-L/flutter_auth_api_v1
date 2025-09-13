@@ -213,9 +213,9 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
             }
 
             // If not found by ID, check by phone
-            if (!existingUser && userData.phone_number) {
-                existingUser = await this.findByPhone(userData.phone_number);
-                this.logger.log(`Found user by phone ${userData.phone_number}: ${!!existingUser}`);
+            if (!existingUser && userData.phone_e164) {
+                existingUser = await this.findByPhone(userData.phone_e164);
+                this.logger.log(`Found user by phone ${userData.phone_e164}: ${!!existingUser}`);
             }
 
             // If still not found, check by email
