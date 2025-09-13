@@ -15,11 +15,11 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
         try {
             const query = `SELECT * FROM ${this.tableName} WHERE phone_number = $1`;
             const result = await this.query(query, [phoneNumber]);
-            
+
             if (result.rows.length === 0) {
                 return null;
             }
-            
+
             return result.rows[0] as User;
         } catch (error) {
             this.logger.error(`Error finding user by phone ${phoneNumber}:`, error);
@@ -31,23 +31,23 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
         try {
             const query = `SELECT * FROM ${this.tableName} WHERE email = $1`;
             const result = await this.query(query, [email]);
-            
+
             if (result.rows.length === 0) {
                 return null;
             }
-            
+
             return result.rows[0] as User;
         } catch (error) {
             this.logger.error(`Error finding user by email ${email}:`, error);
             throw error;
         }
-        }
+    }
 
     async findByUserType(userType: 'passenger' | 'driver' | 'admin'): Promise<User[]> {
         try {
             const query = `SELECT * FROM ${this.tableName} WHERE user_type = $1 ORDER BY created_at DESC`;
             const result = await this.query(query, [userType]);
-            
+
             return result.rows as User[];
         } catch (error) {
             this.logger.error(`Error finding users by type ${userType}:`, error);
@@ -59,7 +59,7 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
         try {
             const query = `SELECT * FROM ${this.tableName} WHERE is_active = true ORDER BY created_at DESC`;
             const result = await this.query(query);
-            
+
             return result.rows as User[];
         } catch (error) {
             this.logger.error('Error finding active users:', error);
@@ -71,7 +71,7 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
         try {
             const query = `SELECT * FROM ${this.tableName} WHERE status = 'verified' ORDER BY created_at DESC`;
             const result = await this.query(query);
-            
+
             return result.rows as User[];
         } catch (error) {
             this.logger.error('Error finding verified users:', error);
@@ -88,11 +88,11 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
                 RETURNING *
             `;
             const result = await this.query(query, [id]);
-            
+
             if (result.rows.length === 0) {
                 return null;
             }
-            
+
             return result.rows[0] as User;
         } catch (error) {
             this.logger.error(`Error updating last login for user ${id}:`, error);
@@ -108,7 +108,7 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
                 WHERE id = $1
             `;
             const result = await this.query(query, [id]);
-            
+
             return result.rowCount > 0;
         } catch (error) {
             this.logger.error(`Error soft deleting user ${id}:`, error);
@@ -125,11 +125,11 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
                 RETURNING *
             `;
             const result = await this.query(query, [id]);
-            
+
             if (result.rows.length === 0) {
                 return null;
             }
-            
+
             return result.rows[0] as User;
         } catch (error) {
             this.logger.error(`Error restoring user ${id}:`, error);
@@ -146,11 +146,11 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
                 RETURNING *
             `;
             const result = await this.query(query, [id, otp, expiresAt.toISOString()]);
-            
+
             if (result.rows.length === 0) {
                 return null;
             }
-            
+
             return result.rows[0] as User;
         } catch (error) {
             this.logger.error(`Error updating OTP for user ${id}:`, error);
@@ -167,11 +167,11 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
                 RETURNING *
             `;
             const result = await this.query(query, [id]);
-            
+
             if (result.rows.length === 0) {
                 return null;
             }
-            
+
             return result.rows[0] as User;
         } catch (error) {
             this.logger.error(`Error clearing OTP for user ${id}:`, error);

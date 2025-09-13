@@ -11,7 +11,7 @@ export class TestPostgresRepositoriesService {
         private readonly usersRepository: UsersPostgresRepository,
         private readonly tripsRepository: TripsPostgresRepository,
         private readonly postgresService: PostgresService
-    ) {}
+    ) { }
 
     async testUserOperations(): Promise<void> {
         this.logger.log('🧪 Testing User Operations...');
