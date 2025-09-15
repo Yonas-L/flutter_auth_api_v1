@@ -1,6 +1,6 @@
 export interface User {
     id: string;
-    phone_e164?: string; // Match actual database schema
+    phone_number?: string; // Match actual database schema
     email?: string;
     display_name?: string; // Match actual database schema
     avatar_url?: string;
@@ -26,7 +26,7 @@ export interface User {
 
 export interface CreateUserData {
     id?: string; // Auth user ID
-    phone_e164?: string; // Match actual database schema
+    phone_number?: string; // Match actual database schema
     email?: string;
     display_name?: string; // Match actual database schema
     avatar_url?: string;
@@ -47,7 +47,7 @@ export interface CreateUserData {
 }
 
 export interface UpdateUserData {
-    phone_e164?: string; // Match actual database schema
+    phone_number?: string; // Match actual database schema
     email?: string;
     display_name?: string; // Match actual database schema
     avatar_url?: string;

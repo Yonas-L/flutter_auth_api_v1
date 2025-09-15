@@ -13,7 +13,7 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
 
     async findByPhone(phoneNumber: string): Promise<User | null> {
         try {
-            const query = `SELECT * FROM ${this.tableName} WHERE phone_e164 = $1`;
+            const query = `SELECT * FROM ${this.tableName} WHERE phone_number = $1`;
             const result = await this.query(query, [phoneNumber]);
 
             if (result.rows.length === 0) {

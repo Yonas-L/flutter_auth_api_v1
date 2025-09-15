@@ -29,7 +29,7 @@ export class UsersService {
   async create(userData: CreateUserData): Promise<User> {
     try {
       // Ensure we have the required phone format
-      if (userData.phone_e164 && !userData.phone_e164.startsWith('+251')) {
+      if (userData.phone_number && !userData.phone_number.startsWith('+251')) {
         throw new Error('Phone number must be in E164 format (+251...)');
       }
 

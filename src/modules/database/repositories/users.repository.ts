@@ -73,7 +73,7 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
             const { data, error } = await this.databaseService.client
                 .from('users')
                 .select('*')
-                .eq('phone_e164', phoneE164)
+                .eq('phone_number', phoneE164)
                 .maybeSingle();
 
             if (error) {

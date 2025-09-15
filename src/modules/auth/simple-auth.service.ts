@@ -42,7 +42,7 @@ export class SimpleAuthService {
                 // New user - create basic user record
                 this.logger.log(`👤 Creating new user for: ${phoneE164}`);
                 user = await this.usersRepository.create({
-                    phone_e164: phoneE164,
+                    phone_number: phoneE164,
                     user_type: 'driver',
                     is_phone_verified: true,
                     is_active: true,
@@ -107,7 +107,7 @@ export class SimpleAuthService {
         // Generate tokens
         const payload = {
             sub: user.id,
-            phoneNumber: user.phone_e164,
+            phoneNumber: user.phone_number,
             email: user.email,
             userType: user.user_type
         };
@@ -127,7 +127,7 @@ export class SimpleAuthService {
             refreshToken,
             user: {
                 id: user.id,
-                phoneNumber: user.phone_e164,
+                phoneNumber: user.phone_number,
                 email: user.email,
                 name: user.display_name,
                 userType: user.user_type,
