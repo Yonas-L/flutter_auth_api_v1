@@ -88,11 +88,11 @@ export class TripsService {
           payment_status,
           request_timestamp,
           trip_reference,
-          trip_details,
-          selected_vehicle_details
+          passenger_name,
+          is_new_passenger
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8,           ST_Point($9, $10)::point,
-          $11, $12, $13, ST_Point($14, $15)::point, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26
+          $11, $12, $13, ST_Point($14, $15)::point, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
         ) RETURNING *
       `;
 
@@ -121,16 +121,8 @@ export class TripsService {
                 'pending',
                 new Date(),
                 tripReference,
-                JSON.stringify(createTripDto.trip_details || {}),
-                JSON.stringify({
-                    vehicle_id: activeVehicle.id,
-                    vehicle_class: activeVehicle.class_id,
-                    vehicle_make: activeVehicle.make,
-                    vehicle_model: activeVehicle.model,
-                    vehicle_year: activeVehicle.year,
-                    vehicle_plate: activeVehicle.license_plate,
-                    vehicle_color: activeVehicle.color
-                })
+                createTripDto.trip_details?.passenger_name || 'Passenger',
+                createTripDto.trip_details?.is_new_passenger || false
             ];
 
             const tripResult = await client.query(tripQuery, tripValues);
@@ -218,7 +210,7 @@ export class TripsService {
                dp.last_name as driver_last_name,
                v.make as vehicle_make,
                v.model as vehicle_model,
-               v.license_plate as vehicle_plate
+               v.plate_number as vehicle_plate
         FROM trips t
         LEFT JOIN driver_profiles dp ON t.driver_id = dp.id
         LEFT JOIN vehicles v ON t.vehicle_id = v.id
