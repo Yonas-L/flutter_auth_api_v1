@@ -1,28 +1,25 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DatabaseService } from '../database.service';
+import { PostgresService } from '../postgres.service';
 import { User, CreateUserData, UpdateUserData } from '../entities/user.entity';
 import { BaseRepository } from '../interfaces/base-repository.interface';
 
 @Injectable()
 export class UsersRepository implements BaseRepository<User, CreateUserData, UpdateUserData> {
     private readonly logger = new Logger(UsersRepository.name);
+    private readonly tableName = 'users';
 
-    constructor(private readonly databaseService: DatabaseService) { }
+    constructor(private readonly postgresService: PostgresService) { }
 
     async findById(id: string): Promise<User | null> {
         try {
-            const { data, error } = await this.databaseService.client
-                .from('users')
-                .select('*')
-                .eq('id', id)
-                .maybeSingle();
+            const query = `SELECT * FROM ${this.tableName} WHERE id = $1`;
+            const result = await this.postgresService.query(query, [id]);
 
-            if (error) {
-                this.logger.error(`Failed to find user by ID ${id}:`, error);
-                throw error;
+            if (result.rows.length === 0) {
+                return null;
             }
 
-            return data;
+            return result.rows[0] as User;
         } catch (error) {
             this.logger.error(`Error finding user by ID ${id}:`, error);
             throw error;
@@ -31,18 +28,14 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
 
     async findByEmail(email: string): Promise<User | null> {
         try {
-            const { data, error } = await this.databaseService.client
-                .from('users')
-                .select('*')
-                .eq('email', email)
-                .maybeSingle();
+            const query = `SELECT * FROM ${this.tableName} WHERE email = $1`;
+            const result = await this.postgresService.query(query, [email]);
 
-            if (error) {
-                this.logger.error(`Failed to find user by email ${email}:`, error);
-                throw error;
+            if (result.rows.length === 0) {
+                return null;
             }
 
-            return data;
+            return result.rows[0] as User;
         } catch (error) {
             this.logger.error(`Error finding user by email ${email}:`, error);
             throw error;
@@ -51,63 +44,54 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
 
     async findAll(): Promise<User[]> {
         try {
-            const { data, error } = await this.databaseService.client
-                .from('users')
-                .select('*')
-                .order('created_at', { ascending: false });
+            const query = `SELECT * FROM ${this.tableName} ORDER BY created_at DESC`;
+            const result = await this.postgresService.query(query);
 
-            if (error) {
-                this.logger.error('Failed to find all users:', error);
-                throw error;
-            }
-
-            return data || [];
+            return result.rows as User[];
         } catch (error) {
             this.logger.error('Error finding all users:', error);
             throw error;
         }
     }
 
-    async findByPhone(phoneE164: string): Promise<User | null> {
+    async findByPhone(phoneNumber: string): Promise<User | null> {
         try {
-            const { data, error } = await this.databaseService.client
-                .from('users')
-                .select('*')
-                .eq('phone_number', phoneE164)
-                .maybeSingle();
+            const query = `SELECT * FROM ${this.tableName} WHERE phone_number = $1`;
+            const result = await this.postgresService.query(query, [phoneNumber]);
 
-            if (error) {
-                this.logger.error(`Failed to find user by phone ${phoneE164}:`, error);
-                throw error;
+            if (result.rows.length === 0) {
+                return null;
             }
 
-            return data;
+            return result.rows[0] as User;
         } catch (error) {
-            this.logger.error(`Error finding user by phone ${phoneE164}:`, error);
+            this.logger.error(`Error finding user by phone ${phoneNumber}:`, error);
             throw error;
         }
     }
 
     async findMany(filters?: Partial<User>): Promise<User[]> {
         try {
-            let query = this.databaseService.client.from('users').select('*');
+            let query = `SELECT * FROM ${this.tableName}`;
+            const params: any[] = [];
+            let paramIndex = 1;
 
-            if (filters) {
+            if (filters && Object.keys(filters).length > 0) {
+                const conditions: string[] = [];
                 Object.entries(filters).forEach(([key, value]) => {
                     if (value !== undefined) {
-                        query = query.eq(key, value);
+                        conditions.push(`${key} = $${paramIndex}`);
+                        params.push(value);
+                        paramIndex++;
                     }
                 });
+                if (conditions.length > 0) {
+                    query += ` WHERE ${conditions.join(' AND ')}`;
+                }
             }
 
-            const { data, error } = await query;
-
-            if (error) {
-                this.logger.error('Failed to find users:', error);
-                throw error;
-            }
-
-            return data || [];
+            const result = await this.postgresService.query(query, params);
+            return result.rows as User[];
         } catch (error) {
             this.logger.error('Error finding users:', error);
             throw error;
@@ -125,19 +109,21 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
                 updated_at: new Date().toISOString(),
             };
 
-            const { data, error } = await this.databaseService.client
-                .from('users')
-                .insert(createData)
-                .select()
-                .single();
+            const columns = Object.keys(createData);
+            const values = Object.values(createData);
+            const placeholders = values.map((_, index) => `$${index + 1}`).join(', ');
 
-            if (error) {
-                this.logger.error('Failed to create user:', error);
-                throw error;
-            }
+            const query = `
+                INSERT INTO ${this.tableName} (${columns.join(', ')})
+                VALUES (${placeholders})
+                RETURNING *
+            `;
 
-            this.logger.log(`✅ User created successfully: ${data.id}`);
-            return data;
+            const result = await this.postgresService.query(query, values);
+            const user = result.rows[0] as User;
+
+            this.logger.log(`✅ User created successfully: ${user.id}`);
+            return user;
         } catch (error) {
             this.logger.error('Error creating user:', error);
             throw error;
@@ -151,20 +137,26 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
                 updated_at: new Date().toISOString(),
             };
 
-            const { data, error } = await this.databaseService.client
-                .from('users')
-                .update(dataToUpdate)
-                .eq('id', id)
-                .select()
-                .single();
+            const columns = Object.keys(dataToUpdate);
+            const values = Object.values(dataToUpdate);
+            const setClause = columns.map((col, index) => `${col} = $${index + 2}`).join(', ');
 
-            if (error) {
-                this.logger.error(`Failed to update user ${id}:`, error);
-                throw error;
+            const query = `
+                UPDATE ${this.tableName}
+                SET ${setClause}
+                WHERE id = $1
+                RETURNING *
+            `;
+
+            const result = await this.postgresService.query(query, [id, ...values]);
+
+            if (result.rows.length === 0) {
+                return null;
             }
 
+            const user = result.rows[0] as User;
             this.logger.log(`✅ User updated successfully: ${id}`);
-            return data;
+            return user;
         } catch (error) {
             this.logger.error(`Error updating user ${id}:`, error);
             throw error;
@@ -174,18 +166,17 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
     async delete(id: string): Promise<boolean> {
         try {
             // Soft delete by setting deleted_at timestamp
-            const { error } = await this.databaseService.client
-                .from('users')
-                .update({
-                    deleted_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('id', id);
+            const query = `
+                UPDATE ${this.tableName}
+                SET deleted_at = $1, updated_at = $2
+                WHERE id = $3
+            `;
 
-            if (error) {
-                this.logger.error(`Failed to delete user ${id}:`, error);
-                throw error;
-            }
+            await this.postgresService.query(query, [
+                new Date().toISOString(),
+                new Date().toISOString(),
+                id
+            ]);
 
             this.logger.log(`✅ User soft deleted successfully: ${id}`);
             return true;
@@ -197,7 +188,7 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
 
     /**
      * Create or update user (upsert operation)
-     * Useful for syncing with Supabase Auth users
+     * Useful for syncing with authentication systems
      */
     async upsert(userData: CreateUserData): Promise<User> {
         try {
@@ -213,9 +204,9 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
             }
 
             // If not found by ID, check by phone
-            if (!existingUser && userData.phone_e164) {
-                existingUser = await this.findByPhone(userData.phone_e164);
-                this.logger.log(`Found user by phone ${userData.phone_e164}: ${!!existingUser}`);
+            if (!existingUser && userData.phone_number) {
+                existingUser = await this.findByPhone(userData.phone_number);
+                this.logger.log(`Found user by phone ${userData.phone_number}: ${!!existingUser}`);
             }
 
             // If still not found, check by email
@@ -255,22 +246,14 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
     /**
      * Check if user exists by phone number
      */
-    async existsByPhone(phoneE164: string): Promise<boolean> {
+    async existsByPhone(phoneNumber: string): Promise<boolean> {
         try {
-            const { data, error } = await this.databaseService.client
-                .from('users')
-                .select('id')
-                .eq('phone_e164', phoneE164)
-                .limit(1);
+            const query = `SELECT id FROM ${this.tableName} WHERE phone_number = $1 LIMIT 1`;
+            const result = await this.postgresService.query(query, [phoneNumber]);
 
-            if (error) {
-                this.logger.error(`Failed to check user existence by phone ${phoneE164}:`, error);
-                throw error;
-            }
-
-            return (data?.length ?? 0) > 0;
+            return result.rows.length > 0;
         } catch (error) {
-            this.logger.error(`Error checking user existence by phone ${phoneE164}:`, error);
+            this.logger.error(`Error checking user existence by phone ${phoneNumber}:`, error);
             throw error;
         }
     }
@@ -280,18 +263,17 @@ export class UsersRepository implements BaseRepository<User, CreateUserData, Upd
      */
     async updateLastLogin(id: string): Promise<void> {
         try {
-            const { error } = await this.databaseService.client
-                .from('users')
-                .update({
-                    last_login_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                })
-                .eq('id', id);
+            const query = `
+                UPDATE ${this.tableName}
+                SET last_login_at = $1, updated_at = $2
+                WHERE id = $3
+            `;
 
-            if (error) {
-                this.logger.error(`Failed to update last login for user ${id}:`, error);
-                throw error;
-            }
+            await this.postgresService.query(query, [
+                new Date().toISOString(),
+                new Date().toISOString(),
+                id
+            ]);
 
             this.logger.log(`✅ Last login updated for user: ${id}`);
         } catch (error) {
