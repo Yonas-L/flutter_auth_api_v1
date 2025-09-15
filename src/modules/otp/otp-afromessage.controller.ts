@@ -113,13 +113,15 @@ export class OtpAfroMessageController {
             if (result.valid) {
                 this.logger.log(`✅ OTP verified successfully for ${request.to}`);
 
-                // Simple authentication - always redirect to registration for new users
                 try {
                     // Delete OTP from database after successful verification
                     await this.otpService.deleteOtpAfterVerification(request.to, request.code);
 
-                    // For now, always redirect to registration since user was removed
-                    this.logger.log(`✅ OTP verified for ${request.to}, redirecting to registration`);
+                    // Authenticate user and get JWT tokens
+                    this.logger.log(`🔐 Authenticating user for phone: ${request.to}`);
+                    const authResult = await this.simpleAuthService.authenticateUserByPhone(request.to);
+
+                    this.logger.log(`✅ User authenticated successfully for ${request.to}, redirecting to: ${authResult.redirectTo}`);
 
                     return {
                         acknowledge: 'success',
@@ -128,18 +130,22 @@ export class OtpAfroMessageController {
                             to: request.to,
                             message: 'OTP verified successfully'
                         },
-                        redirectTo: 'register-1'
+                        accessToken: authResult.accessToken,
+                        refreshToken: authResult.refreshToken,
+                        user: authResult.user,
+                        redirectTo: authResult.redirectTo
                     };
                 } catch (authError) {
                     this.logger.error(`❌ Error processing OTP verification for ${request.to}:`, authError);
-                    // Still return success for OTP verification
+                    // Still return success for OTP verification but without auth data
                     return {
                         acknowledge: 'success',
                         response: {
                             valid: result.valid,
                             to: request.to,
                             message: 'OTP verified successfully'
-                        }
+                        },
+                        redirectTo: 'register-1'
                     };
                 }
             }
