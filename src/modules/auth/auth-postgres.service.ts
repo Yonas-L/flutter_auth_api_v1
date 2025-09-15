@@ -87,7 +87,7 @@ export class AuthPostgresService {
             let user = await this.usersRepository.findByPhone(normalizedPhone);
             if (!user) {
                 user = await this.usersRepository.create({
-                    phone_e164: normalizedPhone,
+                    phone_number: normalizedPhone,
                     user_type: 'driver', // Driver app creates driver users
                     is_phone_verified: true,
                     is_active: true,
@@ -129,7 +129,7 @@ export class AuthPostgresService {
             this.logger.log(`🔐 User lookup result: ${user ? `Found user ${user.id}` : 'User not found'}`);
             if (!user) {
                 user = await this.usersRepository.create({
-                    phone_e164: normalizedPhone,
+                    phone_number: normalizedPhone,
                     user_type: 'driver', // Driver app creates driver users
                     is_phone_verified: true,
                     is_active: true,
@@ -253,7 +253,7 @@ export class AuthPostgresService {
 
             // Generate new access token
             const accessToken = this.jwtService.sign(
-                { sub: user.id, phoneNumber: user.phone_e164, email: user.email },
+                { sub: user.id, phoneNumber: user.phone_number, email: user.email },
                 {
                     secret: this.configService.get('JWT_ACCESS_SECRET'),
                     expiresIn: this.configService.get('ACCESS_EXPIRES_IN') || '15m',
@@ -303,7 +303,7 @@ export class AuthPostgresService {
 
             return {
                 id: user.id,
-                phoneNumber: user.phone_e164,
+                phoneNumber: user.phone_number,
                 email: user.email,
                 name: user.display_name,
                 userType: user.user_type,
@@ -345,7 +345,7 @@ export class AuthPostgresService {
             refreshToken,
             user: {
                 id: user.id,
-                phoneNumber: user.phone_e164,
+                phoneNumber: user.phone_number,
                 email: user.email,
                 name: user.display_name,
                 userType: user.user_type,

@@ -112,7 +112,7 @@ export class UsersService {
       _id: user.id,
       id: user.id,
       email: user.email,
-      phoneNumber: user.phone_e164,
+      phoneNumber: user.phone_number,
       name: user.display_name,
       role: 'driver', // Default role for now
       status: user.status,

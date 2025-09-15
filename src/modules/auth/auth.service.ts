@@ -123,7 +123,7 @@ export class AuthService {
     let user = await this.usersService.findByPhone(phoneNumber);
     if (!user) {
       user = await this.usersService.create({
-        phone_e164: phoneNumber,
+        phone_number: phoneNumber,
         status: 'verified',
         is_phone_verified: true,
       });
@@ -133,7 +133,7 @@ export class AuthService {
     await this.usersService.updateLastLogin(user.id);
 
     // Generate tokens
-    const payload = { phoneNumber: user.phone_e164, sub: user.id };
+    const payload = { phoneNumber: user.phone_number, sub: user.id };
     const accessToken = this.jwtService.sign(payload);
     const refreshToken = this.jwtService.sign(payload, {
       secret: this.configService.get('JWT_REFRESH_SECRET'),
@@ -145,7 +145,7 @@ export class AuthService {
       refreshToken,
       user: {
         id: user.id,
-        phoneNumber: user.phone_e164,
+        phoneNumber: user.phone_number,
         name: user.display_name,
         role: 'driver', // Default role for now
         status: user.status,

@@ -19,7 +19,7 @@ export class TestPostgresRepositoriesService {
         try {
             // Test creating a user
             const testUser = await this.usersRepository.create({
-                phone_e164: '+251911234567',
+                phone_number: '+251911234567',
                 display_name: 'Test User',
                 email: 'test@example.com',
                 user_type: 'passenger',
@@ -68,7 +68,7 @@ export class TestPostgresRepositoriesService {
         try {
             // First create a test user
             const testUser = await this.usersRepository.create({
-                phone_e164: '+251911234568',
+                phone_number: '+251911234568',
                 display_name: 'Trip Test User',
                 user_type: 'passenger',
                 is_phone_verified: true,

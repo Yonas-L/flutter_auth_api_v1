@@ -34,7 +34,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       try {
         user = await this.usersService.create({
           id: userId,
-          phone_e164: payload.phone.startsWith('+') ? payload.phone : `+${payload.phone}`,
+          phone_number: payload.phone.startsWith('+') ? payload.phone : `+${payload.phone}`,
           email: payload.email,
           display_name: payload.user_metadata?.display_name || null,
           user_type: 'passenger',
@@ -58,7 +58,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       id: user.id,
       email: user.email,
-      phoneNumber: user.phone_e164,
+      phoneNumber: user.phone_number,
       name: user.display_name,
       role: 'driver', // Default for now
       status: user.status,
