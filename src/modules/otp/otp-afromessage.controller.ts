@@ -2,6 +2,7 @@ import { Controller, Post, Get, Body, Query, Param, HttpException, HttpStatus, L
 import { AfroMessageService } from './afro-message.service';
 import { OtpService } from './otp.service';
 import { AuthPostgresService } from '../auth/auth-postgres.service';
+import { SimpleAuthService } from '../auth/simple-auth.service';
 
 export interface SendOtpRequest {
     to: string;
@@ -23,7 +24,8 @@ export class OtpAfroMessageController {
     constructor(
         private readonly afroMessageService: AfroMessageService,
         private readonly otpService: OtpService,
-        private readonly authPostgresService: AuthPostgresService
+        private readonly authPostgresService: AuthPostgresService,
+        private readonly simpleAuthService: SimpleAuthService
     ) { }
 
     /**
@@ -111,12 +113,12 @@ export class OtpAfroMessageController {
             if (result.valid) {
                 this.logger.log(`✅ OTP verified successfully for ${request.to}`);
 
-                // Create or get PostgreSQL user and issue tokens BEFORE deleting OTP
+                // Authenticate user and determine redirection
                 try {
-                    const tokens = await this.authPostgresService.createOrAuthenticateUser(request.to);
-                    this.logger.log(`✅ User authenticated successfully for ${request.to}`);
+                    const authResult = await this.simpleAuthService.authenticateUserByPhone(request.to);
+                    this.logger.log(`✅ User authenticated successfully for ${request.to}, redirecting to: ${authResult.redirectTo}`);
 
-                    // Delete OTP from database after successful user creation
+                    // Delete OTP from database after successful authentication
                     await this.otpService.deleteOtpAfterVerification(request.to, request.code);
 
                     return {
@@ -126,13 +128,14 @@ export class OtpAfroMessageController {
                             to: request.to,
                             message: 'OTP verified successfully'
                         },
-                        accessToken: tokens.accessToken,
-                        refreshToken: tokens.refreshToken,
-                        user: tokens.user
+                        accessToken: authResult.accessToken,
+                        refreshToken: authResult.refreshToken,
+                        user: authResult.user,
+                        redirectTo: authResult.redirectTo
                     };
                 } catch (authError) {
-                    this.logger.error(`❌ Error creating user for ${request.to}:`, authError);
-                    // Still return success for OTP verification, but without user creation
+                    this.logger.error(`❌ Error authenticating user for ${request.to}:`, authError);
+                    // Still return success for OTP verification, but without authentication
                     return {
                         acknowledge: 'success',
                         response: {

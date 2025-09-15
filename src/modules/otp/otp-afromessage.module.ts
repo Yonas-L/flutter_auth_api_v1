@@ -6,6 +6,7 @@ import { AfroMessageService } from './afro-message.service';
 import { OtpService } from './otp.service';
 import { DatabaseModule } from '../database/database.module';
 import { AuthPostgresService } from '../auth/auth-postgres.service';
+import { SimpleAuthService } from '../auth/simple-auth.service';
 
 @Module({
     imports: [
@@ -21,7 +22,7 @@ import { AuthPostgresService } from '../auth/auth-postgres.service';
         }),
     ],
     controllers: [OtpAfroMessageController],
-    providers: [AfroMessageService, OtpService, AuthPostgresService],
+    providers: [AfroMessageService, OtpService, AuthPostgresService, SimpleAuthService],
     exports: [AfroMessageService, OtpService, AuthPostgresService],
 })
 export class OtpAfroMessageModule { }
