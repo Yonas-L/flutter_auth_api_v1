@@ -18,6 +18,7 @@ import { DatabaseModule } from './modules/database/database.module';
 import { SocketModule } from './modules/socket/socket.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { CloudinaryModule } from './modules/storage/cloudinary.module';
+import { TripsModule } from './modules/trips/trips.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { CloudinaryModule } from './modules/storage/cloudinary.module';
     SocketModule,
     StorageModule,
     CloudinaryModule,
+    TripsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
