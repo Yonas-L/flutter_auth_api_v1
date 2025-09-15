@@ -71,28 +71,55 @@ export class SimpleAuthService {
 
     private async determineRedirection(userId: string): Promise<string> {
         try {
-            // Check if user has a driver profile
+            // Use the same logic as registration progress to determine redirection
             const query = `
-                SELECT verification_status 
-                FROM driver_profiles 
-                WHERE user_id = $1
+                SELECT 
+                    dp.id as driver_profile_id,
+                    dp.verification_status,
+                    v.id as vehicle_id,
+                    COUNT(d.id) as document_count
+                FROM users u
+                LEFT JOIN driver_profiles dp ON u.id = dp.user_id
+                LEFT JOIN vehicles v ON dp.id = v.driver_id
+                LEFT JOIN documents d ON u.id = d.user_id
+                WHERE u.id = $1
+                GROUP BY dp.id, dp.verification_status, v.id
             `;
 
             const result = await this.postgresService.query(query, [userId]);
 
             if (result.rows.length === 0) {
-                // No driver profile - needs to register
+                this.logger.log(`📝 User not found: ${userId}, redirecting to register-1`);
+                return 'register-1';
+            }
+
+            const row = result.rows[0];
+            const hasProfile = !!row.driver_profile_id;
+            const hasVehicle = !!row.vehicle_id;
+            const hasDocuments = parseInt(row.document_count) > 0;
+            const verificationStatus = row.verification_status;
+
+            this.logger.log(`📊 Registration status - Profile: ${hasProfile}, Vehicle: ${hasVehicle}, Documents: ${hasDocuments}, Verification: ${verificationStatus}`);
+
+            // If no driver profile, user needs to start registration
+            if (!hasProfile) {
                 this.logger.log(`📝 No driver profile found for user: ${userId}, redirecting to register-1`);
                 return 'register-1';
             }
 
-            const verificationStatus = result.rows[0].verification_status;
-            this.logger.log(`📊 Driver profile status: ${verificationStatus}`);
+            // If profile exists but not complete (missing vehicle or documents), continue registration
+            if (!hasVehicle || !hasDocuments) {
+                this.logger.log(`📝 Incomplete registration for user: ${userId}, redirecting to register-1`);
+                return 'register-1';
+            }
 
+            // Profile is complete, check verification status
             if (verificationStatus === 'verified') {
+                this.logger.log(`✅ User ${userId} is verified, redirecting to Home`);
                 return 'Home';
             } else {
-                // pending_review, unverified, rejected, etc.
+                // Profile complete but pending verification
+                this.logger.log(`⏳ User ${userId} profile complete but pending verification, redirecting to pending-verification`);
                 return 'pending-verification';
             }
 

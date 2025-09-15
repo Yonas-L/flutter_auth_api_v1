@@ -151,9 +151,15 @@ export class DriverProfilesService {
       const profile = await this.driverProfilesRepository.findByUserId(userId);
       this.logger.log(`🔍 Profile found: ${!!profile}, ID: ${profile?.id}`);
       
-      this.logger.log(`🔍 Fetching vehicles for driver: ${profile?.id}`);
-      const vehicles = await this.vehiclesRepository.findMany({ driver_id: profile?.id });
-      this.logger.log(`🔍 Vehicles found: ${vehicles.length}`);
+      // Only fetch vehicles if we have a driver profile
+      let vehicles: any[] = [];
+      if (profile?.id) {
+        this.logger.log(`🔍 Fetching vehicles for driver: ${profile.id}`);
+        vehicles = await this.vehiclesRepository.findMany({ driver_id: profile.id });
+        this.logger.log(`🔍 Vehicles found: ${vehicles.length}`);
+      } else {
+        this.logger.log(`🔍 No driver profile found, skipping vehicle check`);
+      }
       
       this.logger.log(`🔍 Fetching documents for user: ${userId}`);
       const documents = await this.documentsRepository.findMany({ user_id: userId });
