@@ -17,20 +17,41 @@ export class TripsService {
         const client = await this.postgresService.getClient();
 
         try {
+            this.logger.log(`Starting trip creation for driver: ${driverUserId}`);
+            this.logger.log(`Trip data: ${JSON.stringify(createTripDto, null, 2)}`);
+
             await client.query('BEGIN');
 
             // Get driver profile
+            this.logger.log('Looking up driver profile...');
             const driverProfile = await this.driverProfilesRepository.findByUserId(driverUserId);
             if (!driverProfile) {
+                this.logger.error(`Driver profile not found for user: ${driverUserId}`);
                 throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
             }
+            this.logger.log(`Found driver profile: ${driverProfile.id}`);
 
             // Get driver's active vehicle
+            this.logger.log('Looking up driver vehicles...');
             const vehicles = await this.vehiclesRepository.findMany({ driver_id: driverProfile.id });
+            this.logger.log(`Found ${vehicles.length} vehicles for driver`);
+
             const activeVehicle = vehicles.find(v => v.is_active) || vehicles[0];
 
             if (!activeVehicle) {
+                this.logger.error(`No active vehicle found for driver: ${driverProfile.id}`);
                 throw new HttpException('No active vehicle found for driver', HttpStatus.BAD_REQUEST);
+            }
+            this.logger.log(`Using vehicle: ${activeVehicle.id} (type: ${activeVehicle.vehicle_type_id})`);
+
+            // Validate required trip data
+            if (!createTripDto.pickup_address || !createTripDto.dropoff_address) {
+                throw new HttpException('Pickup and dropoff addresses are required', HttpStatus.BAD_REQUEST);
+            }
+
+            if (!createTripDto.pickup_latitude || !createTripDto.pickup_longitude ||
+                !createTripDto.dropoff_latitude || !createTripDto.dropoff_longitude) {
+                throw new HttpException('Pickup and dropoff coordinates are required', HttpStatus.BAD_REQUEST);
             }
 
             // Handle passenger - create user if new passenger
@@ -45,19 +66,26 @@ export class TripsService {
                 } else {
                     // Create new passenger user
                     const createUserQuery = `
-            INSERT INTO users (phone_number, full_name, is_active, status, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, NOW(), NOW())
+            INSERT INTO users (phone_number, display_name, user_type, is_phone_verified, is_active, status, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
             RETURNING id
           `;
                     const newUserResult = await client.query(createUserQuery, [
                         createTripDto.passenger_phone,
                         createTripDto.trip_details?.passenger_name || 'Passenger',
+                        'passenger',
                         true,
-                        'active'
+                        true,
+                        'verified'
                     ]);
                     passengerId = newUserResult.rows[0].id;
                     this.logger.log(`Created new passenger user: ${passengerId}`);
                 }
+            }
+
+            // Ensure we have a passenger ID
+            if (!passengerId) {
+                throw new HttpException('Passenger ID is required', HttpStatus.BAD_REQUEST);
             }
 
             // Generate trip reference
@@ -87,12 +115,10 @@ export class TripsService {
           payment_method,
           payment_status,
           request_timestamp,
-          trip_reference,
-          passenger_name,
-          is_new_passenger
+          trip_reference
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8,           ST_Point($9, $10)::point,
-          $11, $12, $13, ST_Point($14, $15)::point, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
+          $1, $2, $3, $4, $5, $6, $7, $8, ST_Point($9, $10)::point,
+          $11, $12, $13, ST_Point($14, $15)::point, $16, $17, $18, $19, $20, $21, $22, $23
         ) RETURNING *
       `;
 
@@ -100,7 +126,7 @@ export class TripsService {
                 passengerId, // Now guaranteed to have a valid passenger ID
                 driverProfile.id,
                 activeVehicle.id,
-                activeVehicle.class_id,
+                activeVehicle.vehicle_type_id, // Use the correct field name
                 'requested',
                 createTripDto.pickup_address,
                 createTripDto.pickup_latitude,
@@ -120,15 +146,18 @@ export class TripsService {
                 createTripDto.payment_method || 'cash',
                 'pending',
                 new Date(),
-                tripReference,
-                createTripDto.trip_details?.passenger_name || 'Passenger',
-                createTripDto.trip_details?.is_new_passenger || false
+                tripReference
             ];
+
+            this.logger.log('Creating trip record...');
+            this.logger.log(`Trip values: ${JSON.stringify(tripValues, null, 2)}`);
 
             const tripResult = await client.query(tripQuery, tripValues);
             const trip = tripResult.rows[0];
+            this.logger.log(`Trip created successfully: ${trip.id}`);
 
             // Create driver pickup record
+            this.logger.log('Creating driver pickup record...');
             const pickupQuery = `
         INSERT INTO driver_pickups (
           driver_id,
@@ -167,14 +196,18 @@ export class TripsService {
                 createTripDto.notes || null
             ];
 
+            this.logger.log(`Pickup values: ${JSON.stringify(pickupValues, null, 2)}`);
             const pickupResult = await client.query(pickupQuery, pickupValues);
             const driverPickup = pickupResult.rows[0];
+            this.logger.log(`Driver pickup created: ${driverPickup.id}`);
 
             // Update driver profile to set current trip
+            this.logger.log('Updating driver profile...');
             await this.driverProfilesRepository.update(driverProfile.id, {
                 current_trip_id: trip.id,
                 is_available: false
             });
+            this.logger.log('Driver profile updated successfully');
 
             await client.query('COMMIT');
 
@@ -189,6 +222,14 @@ export class TripsService {
         } catch (error) {
             await client.query('ROLLBACK');
             this.logger.error('Error creating trip:', error);
+            this.logger.error('Error details:', {
+                message: error.message,
+                code: error.code,
+                detail: error.detail,
+                hint: error.hint,
+                position: error.position,
+                stack: error.stack
+            });
             throw error;
         } finally {
             client.release();

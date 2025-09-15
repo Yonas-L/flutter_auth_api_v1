@@ -214,12 +214,17 @@ export class UsersController {
             const user = await this.usersService.findByPhone(normalizedPhone);
 
             if (!user) {
+                // Log as info instead of error since this is expected behavior for new users
+                this.logger.log(`User not found for phone ${phoneNumber} - this is expected for new users`);
                 throw new HttpException('User not found', HttpStatus.NOT_FOUND);
             }
 
             return new UserResponseDto(user);
         } catch (error) {
-            this.logger.error(`Error getting user by phone ${phoneNumber}:`, error);
+            // Only log as error if it's not a 404 (user not found)
+            if (error.status !== HttpStatus.NOT_FOUND) {
+                this.logger.error(`Error getting user by phone ${phoneNumber}:`, error);
+            }
             throw error;
         }
     }

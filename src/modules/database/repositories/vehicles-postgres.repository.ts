@@ -4,7 +4,8 @@ import { PostgresService } from '../postgres.service';
 export interface Vehicle {
     id: string;
     driver_id: string;
-    class_id: number;
+    vehicle_type_id: number;
+    class_id?: number; // Keep for backward compatibility
     make: string;
     model: string;
     year: number;
@@ -17,7 +18,8 @@ export interface Vehicle {
 
 export interface CreateVehicleData {
     driver_id: string;
-    class_id: number;
+    vehicle_type_id: number;
+    class_id?: number; // Keep for backward compatibility
     make: string;
     model: string;
     year: number;
@@ -27,7 +29,8 @@ export interface CreateVehicleData {
 }
 
 export interface UpdateVehicleData {
-    class_id?: number;
+    vehicle_type_id?: number;
+    class_id?: number; // Keep for backward compatibility
     make?: string;
     model?: string;
     year?: number;
@@ -178,7 +181,8 @@ export class VehiclesPostgresRepository {
         return {
             id: row.id,
             driver_id: row.driver_id,
-            class_id: row.class_id,
+            vehicle_type_id: row.vehicle_type_id || row.class_id, // Handle both schemas
+            class_id: row.class_id, // Keep for backward compatibility
             make: row.make,
             model: row.model,
             year: row.year,
