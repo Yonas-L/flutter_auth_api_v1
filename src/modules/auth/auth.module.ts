@@ -4,9 +4,11 @@ import { PassportModule } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
+import { SimpleAuthService } from './simple-auth.service';
 import { UsersModule } from '../users/users.module';
 import { OtpModule } from '../otp/otp.module';
 import { MailModule } from '../mail/mail.module';
+import { DatabaseModule } from '../database/database.module';
 import { AfroMessageService } from '../otp/afro-message.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 
@@ -25,9 +27,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
     UsersModule,
     OtpModule,
     MailModule,
+    DatabaseModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, AfroMessageService],
-  exports: [AuthService],
+  providers: [AuthService, SimpleAuthService, JwtStrategy, AfroMessageService],
+  exports: [AuthService, SimpleAuthService],
 })
 export class AuthModule { }

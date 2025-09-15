@@ -29,7 +29,7 @@ export class SimpleAuthService {
         private readonly jwtService: JwtService,
         private readonly configService: ConfigService,
         private readonly postgresService: PostgresService,
-    ) {}
+    ) { }
 
     async authenticateUserByPhone(phoneE164: string): Promise<AuthResult> {
         this.logger.log(`🔍 Authenticating user by phone: ${phoneE164}`);
@@ -48,19 +48,19 @@ export class SimpleAuthService {
                     is_active: true,
                     status: 'pending_verification',
                 });
-                
+
                 // New user should go to registration
                 return this.generateAuthResult(user, 'register-1');
             }
 
             // Update last login
             await this.usersRepository.updateLastLogin(user.id);
-            
+
             // Determine redirect based on driver profile status
             const redirectTo = await this.determineRedirection(user.id);
-            
+
             this.logger.log(`✅ User authenticated: ${user.id}, redirecting to: ${redirectTo}`);
-            
+
             return this.generateAuthResult(user, redirectTo);
 
         } catch (error) {
@@ -77,9 +77,9 @@ export class SimpleAuthService {
                 FROM driver_profiles 
                 WHERE user_id = $1
             `;
-            
+
             const result = await this.postgresService.query(query, [userId]);
-            
+
             if (result.rows.length === 0) {
                 // No driver profile - needs to register
                 this.logger.log(`📝 No driver profile found for user: ${userId}, redirecting to register-1`);
@@ -105,11 +105,11 @@ export class SimpleAuthService {
 
     private generateAuthResult(user: any, redirectTo: string): AuthResult {
         // Generate tokens
-        const payload = { 
-            sub: user.id, 
-            phoneNumber: user.phone_e164, 
+        const payload = {
+            sub: user.id,
+            phoneNumber: user.phone_e164,
             email: user.email,
-            userType: user.user_type 
+            userType: user.user_type
         };
 
         const accessToken = this.jwtService.sign(payload, {
