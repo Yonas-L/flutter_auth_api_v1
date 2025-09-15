@@ -6,13 +6,13 @@ import { DriverProfilesPostgresRepository } from '../database/repositories/drive
 import { VehiclesPostgresRepository } from '../database/repositories/vehicles-postgres.repository';
 
 @Module({
-  imports: [DatabaseModule],
-  controllers: [TripsController],
-  providers: [
-    TripsService,
-    DriverProfilesPostgresRepository,
-    VehiclesPostgresRepository,
-  ],
-  exports: [TripsService],
+    imports: [DatabaseModule],
+    controllers: [TripsController],
+    providers: [
+        TripsService,
+        DriverProfilesPostgresRepository,
+        VehiclesPostgresRepository,
+    ],
+    exports: [TripsService],
 })
-export class TripsModule {}
+export class TripsModule { }
