@@ -10,7 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { createClient } from '@supabase/supabase-js';
+import { UsersPostgresRepository } from '../database/repositories/users-postgres.repository';
 
 interface AuthenticatedSocket extends Socket {
     userId: string;
@@ -30,18 +30,10 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly connectedDrivers = new Map<string, AuthenticatedSocket>();
     private readonly availableDrivers = new Map<string, AuthenticatedSocket>();
 
-    private supabase;
-
-    constructor(private jwtService: JwtService) {
-        const supabaseUrl = process.env.SUPABASE_URL;
-        const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-        if (!supabaseUrl || !supabaseKey) {
-            throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required');
-        }
-
-        this.supabase = createClient(supabaseUrl, supabaseKey);
-    }
+    constructor(
+        private jwtService: JwtService,
+        private usersRepository: UsersPostgresRepository,
+    ) { }
 
     async handleConnection(client: Socket) {
         try {
@@ -54,16 +46,37 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 return;
             }
 
-            // Verify Supabase JWT token
-            const { data: { user }, error } = await this.supabase.auth.getUser(token);
-
-            if (error || !user) {
-                this.logger.warn(`Connection rejected: Invalid Supabase token for ${client.id}: ${error?.message}`);
+            // Verify custom JWT token using our PostgreSQL validation
+            let payload;
+            try {
+                payload = this.jwtService.verify(token);
+            } catch (error) {
+                this.logger.warn(`Connection rejected: Invalid JWT token for ${client.id}: ${error.message}`);
                 client.disconnect();
                 return;
             }
 
-            const userId = user.id;
+            const userId = payload.sub;
+            if (!userId) {
+                this.logger.warn(`Connection rejected: No user ID in token for ${client.id}`);
+                client.disconnect();
+                return;
+            }
+
+            // Verify user exists in our PostgreSQL database
+            const user = await this.usersRepository.findById(userId);
+            if (!user) {
+                this.logger.warn(`Connection rejected: User not found for ${client.id}: ${userId}`);
+                client.disconnect();
+                return;
+            }
+
+            // Check if user is active
+            if (!user.is_active) {
+                this.logger.warn(`Connection rejected: User account deactivated for ${client.id}: ${userId}`);
+                client.disconnect();
+                return;
+            }
 
             // Attach user info to socket
             (client as AuthenticatedSocket).userId = userId;
@@ -226,17 +239,13 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         socket_id?: string | null;
     }) {
         try {
-            const { error } = await this.supabase
-                .from('driver_profiles')
-                .update({
-                    ...updates,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('user_id', userId);
+            // For now, we'll just log the status update
+            // In a full implementation, you'd update the driver_profiles table
+            this.logger.log(`Driver status update for ${userId}:`, updates);
 
-            if (error) {
-                this.logger.error(`Failed to update driver status:`, error);
-            }
+            // TODO: Implement PostgreSQL update for driver_profiles table
+            // This would require adding a driver profiles repository
+
         } catch (error) {
             this.logger.error(`Error updating driver status:`, error);
         }
@@ -244,21 +253,13 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     private async updateDriverLocation(userId: string, location: { lat: number; lng: number }) {
         try {
-            // Convert lat/lng to PostGIS geography point
-            const locationPoint = `POINT(${location.lng} ${location.lat})`;
+            // For now, we'll just log the location update
+            // In a full implementation, you'd update the driver_profiles table with PostGIS
+            this.logger.log(`Driver location update for ${userId}:`, location);
 
-            const { error } = await this.supabase
-                .from('driver_profiles')
-                .update({
-                    last_known_location: locationPoint,
-                    last_location_update: new Date().toISOString(),
-                    updated_at: new Date().toISOString()
-                })
-                .eq('user_id', userId);
+            // TODO: Implement PostgreSQL update for driver_profiles table with PostGIS
+            // This would require adding a driver profiles repository with location support
 
-            if (error) {
-                this.logger.error(`Failed to update driver location:`, error);
-            }
         } catch (error) {
             this.logger.error(`Error updating driver location:`, error);
         }

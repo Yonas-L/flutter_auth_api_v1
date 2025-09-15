@@ -131,7 +131,7 @@ export class SimpleAuthService {
             } else {
                 // Unknown status, check registration completeness
                 this.logger.log(`⚠️ Unknown user status: ${userStatus}, checking registration completeness`);
-                
+
                 const registrationQuery = `
                     SELECT 
                         dp.id as driver_profile_id,
