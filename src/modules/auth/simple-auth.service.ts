@@ -71,56 +71,93 @@ export class SimpleAuthService {
 
     private async determineRedirection(userId: string): Promise<string> {
         try {
-            // Use the same logic as registration progress to determine redirection
-            const query = `
-                SELECT 
-                    dp.id as driver_profile_id,
-                    dp.verification_status,
-                    v.id as vehicle_id,
-                    COUNT(d.id) as document_count
-                FROM users u
-                LEFT JOIN driver_profiles dp ON u.id = dp.user_id
-                LEFT JOIN vehicles v ON dp.id = v.driver_id
-                LEFT JOIN documents d ON u.id = d.user_id
-                WHERE u.id = $1
-                GROUP BY dp.id, dp.verification_status, v.id
-            `;
+            // First check the user's status from the users table
+            const userQuery = `SELECT status FROM users WHERE id = $1`;
+            const userResult = await this.postgresService.query(userQuery, [userId]);
 
-            const result = await this.postgresService.query(query, [userId]);
-
-            if (result.rows.length === 0) {
+            if (userResult.rows.length === 0) {
                 this.logger.log(`📝 User not found: ${userId}, redirecting to register-1`);
                 return 'register-1';
             }
 
-            const row = result.rows[0];
-            const hasProfile = !!row.driver_profile_id;
-            const hasVehicle = !!row.vehicle_id;
-            const hasDocuments = parseInt(row.document_count) > 0;
-            const verificationStatus = row.verification_status;
+            const userStatus = userResult.rows[0].status;
+            this.logger.log(`📊 User status for ${userId}: ${userStatus}`);
 
-            this.logger.log(`📊 Registration status - Profile: ${hasProfile}, Vehicle: ${hasVehicle}, Documents: ${hasDocuments}, Verification: ${verificationStatus}`);
-
-            // If no driver profile, user needs to start registration
-            if (!hasProfile) {
-                this.logger.log(`📝 No driver profile found for user: ${userId}, redirecting to register-1`);
-                return 'register-1';
-            }
-
-            // If profile exists but not complete (missing vehicle or documents), continue registration
-            if (!hasVehicle || !hasDocuments) {
-                this.logger.log(`📝 Incomplete registration for user: ${userId}, redirecting to register-1`);
-                return 'register-1';
-            }
-
-            // Profile is complete, check verification status
-            if (verificationStatus === 'verified') {
-                this.logger.log(`✅ User ${userId} is verified, redirecting to Home`);
+            // Check user status first - this is the primary decision factor
+            if (userStatus === 'verified' || userStatus === 'active') {
+                this.logger.log(`✅ User ${userId} is verified/active, redirecting to Home`);
                 return 'Home';
-            } else {
-                // Profile complete but pending verification
-                this.logger.log(`⏳ User ${userId} profile complete but pending verification, redirecting to pending-verification`);
+            } else if (userStatus === 'pending_verification') {
+                // Check if user has complete registration (profile + vehicle + documents)
+                const registrationQuery = `
+                    SELECT 
+                        dp.id as driver_profile_id,
+                        v.id as vehicle_id,
+                        COUNT(d.id) as document_count
+                    FROM users u
+                    LEFT JOIN driver_profiles dp ON u.id = dp.user_id
+                    LEFT JOIN vehicles v ON dp.id = v.driver_id
+                    LEFT JOIN documents d ON u.id = d.user_id
+                    WHERE u.id = $1
+                    GROUP BY dp.id, v.id
+                `;
+
+                const regResult = await this.postgresService.query(registrationQuery, [userId]);
+                const row = regResult.rows[0];
+                const hasProfile = !!row.driver_profile_id;
+                const hasVehicle = !!row.vehicle_id;
+                const hasDocuments = parseInt(row.document_count) > 0;
+
+                this.logger.log(`📊 Registration status - Profile: ${hasProfile}, Vehicle: ${hasVehicle}, Documents: ${hasDocuments}`);
+
+                // If no driver profile, user needs to start registration
+                if (!hasProfile) {
+                    this.logger.log(`📝 No driver profile found for user: ${userId}, redirecting to register-1`);
+                    return 'register-1';
+                }
+
+                // If profile exists but not complete (missing vehicle or documents), continue registration
+                if (!hasVehicle || !hasDocuments) {
+                    this.logger.log(`📝 Incomplete registration for user: ${userId}, redirecting to register-1`);
+                    return 'register-1';
+                }
+
+                // Profile is complete and user is pending verification
+                this.logger.log(`⏳ User ${userId} has complete profile but pending verification, redirecting to pending-verification`);
                 return 'pending-verification';
+            } else if (userStatus === 'suspended' || userStatus === 'deleted') {
+                this.logger.log(`❌ User ${userId} is suspended/deleted, redirecting to register-1`);
+                return 'register-1';
+            } else {
+                // Unknown status, check registration completeness
+                this.logger.log(`⚠️ Unknown user status: ${userStatus}, checking registration completeness`);
+                
+                const registrationQuery = `
+                    SELECT 
+                        dp.id as driver_profile_id,
+                        v.id as vehicle_id,
+                        COUNT(d.id) as document_count
+                    FROM users u
+                    LEFT JOIN driver_profiles dp ON u.id = dp.user_id
+                    LEFT JOIN vehicles v ON dp.id = v.driver_id
+                    LEFT JOIN documents d ON u.id = d.user_id
+                    WHERE u.id = $1
+                    GROUP BY dp.id, v.id
+                `;
+
+                const regResult = await this.postgresService.query(registrationQuery, [userId]);
+                const row = regResult.rows[0];
+                const hasProfile = !!row.driver_profile_id;
+                const hasVehicle = !!row.vehicle_id;
+                const hasDocuments = parseInt(row.document_count) > 0;
+
+                if (!hasProfile || !hasVehicle || !hasDocuments) {
+                    this.logger.log(`📝 Incomplete registration for user: ${userId}, redirecting to register-1`);
+                    return 'register-1';
+                } else {
+                    this.logger.log(`⏳ User ${userId} has complete profile, redirecting to pending-verification`);
+                    return 'pending-verification';
+                }
             }
 
         } catch (error) {
