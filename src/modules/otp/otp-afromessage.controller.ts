@@ -113,13 +113,13 @@ export class OtpAfroMessageController {
             if (result.valid) {
                 this.logger.log(`✅ OTP verified successfully for ${request.to}`);
 
-                // Authenticate user and determine redirection
+                // Simple authentication - always redirect to registration for new users
                 try {
-                    const authResult = await this.simpleAuthService.authenticateUserByPhone(request.to);
-                    this.logger.log(`✅ User authenticated successfully for ${request.to}, redirecting to: ${authResult.redirectTo}`);
-
-                    // Delete OTP from database after successful authentication
+                    // Delete OTP from database after successful verification
                     await this.otpService.deleteOtpAfterVerification(request.to, request.code);
+
+                    // For now, always redirect to registration since user was removed
+                    this.logger.log(`✅ OTP verified for ${request.to}, redirecting to registration`);
 
                     return {
                         acknowledge: 'success',
@@ -128,14 +128,11 @@ export class OtpAfroMessageController {
                             to: request.to,
                             message: 'OTP verified successfully'
                         },
-                        accessToken: authResult.accessToken,
-                        refreshToken: authResult.refreshToken,
-                        user: authResult.user,
-                        redirectTo: authResult.redirectTo
+                        redirectTo: 'register-1'
                     };
                 } catch (authError) {
-                    this.logger.error(`❌ Error authenticating user for ${request.to}:`, authError);
-                    // Still return success for OTP verification, but without authentication
+                    this.logger.error(`❌ Error processing OTP verification for ${request.to}:`, authError);
+                    // Still return success for OTP verification
                     return {
                         acknowledge: 'success',
                         response: {
