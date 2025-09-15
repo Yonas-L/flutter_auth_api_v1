@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersPostgresRepository } from '../database/repositories/users-postgres.repository';
+import { PostgresService } from '../database/postgres.service';
 
 export interface AuthResult {
     accessToken: string;
@@ -27,6 +28,7 @@ export class SimpleAuthService {
         private readonly usersRepository: UsersPostgresRepository,
         private readonly jwtService: JwtService,
         private readonly configService: ConfigService,
+        private readonly postgresService: PostgresService,
     ) {}
 
     async authenticateUserByPhone(phoneE164: string): Promise<AuthResult> {
@@ -76,7 +78,7 @@ export class SimpleAuthService {
                 WHERE user_id = $1
             `;
             
-            const result = await this.usersRepository['postgresService'].query(query, [userId]);
+            const result = await this.postgresService.query(query, [userId]);
             
             if (result.rows.length === 0) {
                 // No driver profile - needs to register
