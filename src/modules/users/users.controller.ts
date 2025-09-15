@@ -84,6 +84,53 @@ export class UsersController {
     }
 
     /**
+     * Get current user status (requires authentication)
+     */
+    @Get('status')
+    @UseGuards(AuthGuard('jwt'))
+    async getUserStatus(@Request() req: any): Promise<{ status: string; message: string }> {
+        try {
+            const userId = req.user.id;
+            const user = await this.usersService.findById(userId);
+
+            if (!user) {
+                throw new HttpException('User not found', HttpStatus.NOT_FOUND);
+            }
+
+            this.logger.log(`🔍 User status for ${userId}: ${user.status}`);
+
+            let message = '';
+            switch (user.status) {
+                case 'pending_verification':
+                    message = 'Your account is under review. We\'ll notify you once verification is complete.';
+                    break;
+                case 'verified':
+                    message = 'Your account is verified! You can now start accepting rides.';
+                    break;
+                case 'active':
+                    message = 'Your account is active and ready to use.';
+                    break;
+                case 'suspended':
+                    message = 'Your account has been suspended. Please contact support for assistance.';
+                    break;
+                case 'deleted':
+                    message = 'Your account has been deleted. Please contact support for assistance.';
+                    break;
+                default:
+                    message = 'Your account status is being processed.';
+            }
+
+            return {
+                status: user.status,
+                message: message
+            };
+        } catch (error) {
+            this.logger.error('Error getting user status:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Update current user profile (requires authentication)
      */
     @Put('profile')
