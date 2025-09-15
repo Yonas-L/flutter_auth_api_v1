@@ -146,11 +146,11 @@ export class DriverProfilesService {
   async getRegistrationProgress(userId: string): Promise<DriverRegistrationProgressDto> {
     try {
       this.logger.log(`🔍 Getting registration progress for user: ${userId}`);
-      
+
       this.logger.log(`🔍 Fetching driver profile for user: ${userId}`);
       const profile = await this.driverProfilesRepository.findByUserId(userId);
       this.logger.log(`🔍 Profile found: ${!!profile}, ID: ${profile?.id}`);
-      
+
       // Only fetch vehicles if we have a driver profile
       let vehicles: any[] = [];
       if (profile?.id) {
@@ -160,7 +160,7 @@ export class DriverProfilesService {
       } else {
         this.logger.log(`🔍 No driver profile found, skipping vehicle check`);
       }
-      
+
       this.logger.log(`🔍 Fetching documents for user: ${userId}`);
       const documents = await this.documentsRepository.findMany({ user_id: userId });
       this.logger.log(`🔍 Documents found: ${documents.length}`);
