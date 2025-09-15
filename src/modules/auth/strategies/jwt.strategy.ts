@@ -13,8 +13,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      // Use Supabase JWT secret for verifying Supabase tokens
-      secretOrKey: configService.get('SUPABASE_JWT_SECRET') || configService.get('JWT_ACCESS_SECRET') || 'fallback-secret',
+      // Use JWT_ACCESS_SECRET for custom tokens, fallback to Supabase secret
+      secretOrKey: configService.get('JWT_ACCESS_SECRET') || configService.get('SUPABASE_JWT_SECRET') || 'fallback-secret',
     });
   }
 
