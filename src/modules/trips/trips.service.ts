@@ -13,25 +13,52 @@ export class TripsService {
         private readonly vehiclesRepository: VehiclesPostgresRepository,
     ) { }
 
-    async createTrip(driverUserId: string, createTripDto: any) {
-        const client = await this.postgresService.getClient();
+  async createTrip(driverUserId: string, createTripDto: any) {
+    const client = await this.postgresService.getClient();
+    
+    try {
+      await client.query('BEGIN');
 
-        try {
-            await client.query('BEGIN');
+      // Get driver profile
+      const driverProfile = await this.driverProfilesRepository.findByUserId(driverUserId);
+      if (!driverProfile) {
+        throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
+      }
 
-            // Get driver profile
-            const driverProfile = await this.driverProfilesRepository.findByUserId(driverUserId);
-            if (!driverProfile) {
-                throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
-            }
+      // Get driver's active vehicle
+      const vehicles = await this.vehiclesRepository.findMany({ driver_id: driverProfile.id });
+      const activeVehicle = vehicles.find(v => v.is_active) || vehicles[0];
+      
+      if (!activeVehicle) {
+        throw new HttpException('No active vehicle found for driver', HttpStatus.BAD_REQUEST);
+      }
 
-            // Get driver's active vehicle
-            const vehicles = await this.vehiclesRepository.findMany({ driver_id: driverProfile.id });
-            const activeVehicle = vehicles.find(v => v.is_active) || vehicles[0];
-
-            if (!activeVehicle) {
-                throw new HttpException('No active vehicle found for driver', HttpStatus.BAD_REQUEST);
-            }
+      // Handle passenger - create user if new passenger
+      let passengerId = createTripDto.passenger_id;
+      if (!passengerId && createTripDto.passenger_phone) {
+        // Check if passenger exists by phone
+        const existingUserQuery = 'SELECT id FROM users WHERE phone_number = $1';
+        const existingUserResult = await client.query(existingUserQuery, [createTripDto.passenger_phone]);
+        
+        if (existingUserResult.rows.length > 0) {
+          passengerId = existingUserResult.rows[0].id;
+        } else {
+          // Create new passenger user
+          const createUserQuery = `
+            INSERT INTO users (phone_number, full_name, is_active, status, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, NOW(), NOW())
+            RETURNING id
+          `;
+          const newUserResult = await client.query(createUserQuery, [
+            createTripDto.passenger_phone,
+            createTripDto.trip_details?.passenger_name || 'Passenger',
+            true,
+            'active'
+          ]);
+          passengerId = newUserResult.rows[0].id;
+          this.logger.log(`Created new passenger user: ${passengerId}`);
+        }
+      }
 
             // Generate trip reference
             const tripReference = `TRP-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
@@ -70,7 +97,7 @@ export class TripsService {
       `;
 
             const tripValues = [
-                createTripDto.passenger_id || null, // Will be null for new passengers
+                passengerId, // Now guaranteed to have a valid passenger ID
                 driverProfile.id,
                 activeVehicle.id,
                 activeVehicle.class_id,
