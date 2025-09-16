@@ -307,7 +307,7 @@ export class TripsService {
             // Update driver pickup status
             const pickupQuery = `
         UPDATE driver_pickups 
-        SET status = 'in_progress',
+        SET status = 'completed',
             completed_at = NOW()
         WHERE driver_id = $1 AND status = 'accepted'
         RETURNING *
