@@ -2,7 +2,7 @@ import { Controller, Get, Query, Param, UseGuards, HttpException, HttpStatus, Lo
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { TripsService } from './trips.service';
-import { User } from '../database/entities/user.entity';
+import type { User } from '../database/entities/user.entity';
 
 @Controller('api/trips')
 @UseGuards(JwtAuthGuard)
