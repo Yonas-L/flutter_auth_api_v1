@@ -9,7 +9,7 @@ export class TripStatusSyncService {
     constructor(
         private readonly postgresService: PostgresService,
         private readonly driverProfilesRepository: DriverProfilesPostgresRepository,
-    ) {}
+    ) { }
 
     /**
      * Sync trip status changes with driver profile current_trip_id
@@ -22,12 +22,12 @@ export class TripStatusSyncService {
             if (!driverId) {
                 const tripQuery = 'SELECT driver_id FROM trips WHERE id = $1';
                 const tripResult = await this.postgresService.query(tripQuery, [tripId]);
-                
+
                 if (tripResult.rows.length === 0) {
                     this.logger.warn(`Trip ${tripId} not found`);
                     return;
                 }
-                
+
                 driverId = tripResult.rows[0].driver_id;
             }
 
@@ -99,10 +99,10 @@ export class TripStatusSyncService {
                 WHERE id = $2
             `;
             await this.postgresService.query(updateQuery, [newStatus, tripId]);
-            
+
             // Sync with driver profile
             await this.syncTripStatus(tripId, newStatus, driverId);
-            
+
             this.logger.log(`✅ Trip ${tripId} status updated to ${newStatus}`);
         } catch (error) {
             this.logger.error(`❌ Error updating trip status for ${tripId}:`, error);

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { UserStatusSyncService } from './user-status-sync.service';
@@ -9,6 +9,6 @@ import { DriverProfilesModule } from '../driver-profiles/driver-profiles.module'
   imports: [DatabaseModule, DriverProfilesModule],
   controllers: [UsersController],
   providers: [UsersService, UserStatusSyncService],
-  exports: [UsersService],
+  exports: [UsersService, UserStatusSyncService],
 })
 export class UsersModule { }

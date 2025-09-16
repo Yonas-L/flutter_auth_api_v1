@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigService } from '@nestjs/config';
@@ -23,7 +23,7 @@ import { UsersModule } from '../users/users.module';
         }),
         DatabaseModule, // For UsersPostgresRepository
         OtpModule, // For OTP services
-        UsersModule, // For UserStatusSyncService
+        forwardRef(() => UsersModule), // For UserStatusSyncService
     ],
     controllers: [AuthPostgresController],
     providers: [

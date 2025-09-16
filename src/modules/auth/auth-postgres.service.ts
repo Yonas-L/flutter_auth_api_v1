@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, UnauthorizedException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, UnauthorizedException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersPostgresRepository } from '../database/repositories/users-postgres.repository';
@@ -37,6 +37,7 @@ export class AuthPostgresService {
         private jwtService: JwtService,
         private configService: ConfigService,
         private usersRepository: UsersPostgresRepository,
+        @Inject(forwardRef(() => UserStatusSyncService))
         private userStatusSyncService: UserStatusSyncService,
         private otpService: OtpService,
         private afroMessageService: AfroMessageService,
@@ -138,7 +139,7 @@ export class AuthPostgresService {
                     status: 'verified',
                 });
                 this.logger.log(`✅ Created new driver user: ${user.id}`);
-                
+
                 // Sync status across related tables
                 await this.userStatusSyncService.syncUserStatus(user.id, 'verified');
             } else {

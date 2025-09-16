@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { UsersRepository } from '../database/repositories/users.repository';
 import { User, CreateUserData, UpdateUserData } from '../database/entities/user.entity';
 import { UserStatusSyncService } from './user-status-sync.service';
@@ -9,6 +9,7 @@ export class UsersService {
 
   constructor(
     private readonly usersRepository: UsersRepository,
+    @Inject(forwardRef(() => UserStatusSyncService))
     private readonly userStatusSyncService: UserStatusSyncService
   ) { }
 
@@ -65,12 +66,12 @@ export class UsersService {
   async updateById(id: string, updateData: UpdateUserData): Promise<User | null> {
     try {
       const updatedUser = await this.usersRepository.update(id, updateData);
-      
+
       // If status was updated, sync across related tables
       if (updatedUser && updateData.status) {
         await this.userStatusSyncService.syncUserStatus(id, updateData.status);
       }
-      
+
       return updatedUser;
     } catch (error) {
       this.logger.error(`Error updating user ${id}:`, error);

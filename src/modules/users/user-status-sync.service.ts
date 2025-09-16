@@ -5,7 +5,7 @@ import { PostgresService } from '../database/postgres.service';
 export class UserStatusSyncService {
     private readonly logger = new Logger(UserStatusSyncService.name);
 
-    constructor(private readonly postgresService: PostgresService) {}
+    constructor(private readonly postgresService: PostgresService) { }
 
     /**
      * Sync user status across all related tables
@@ -63,7 +63,7 @@ export class UserStatusSyncService {
                 WHERE user_id = $2
             `;
             const result = await this.postgresService.query(query, [verificationStatus, userId]);
-            
+
             if (result.rowCount > 0) {
                 this.logger.log(`✅ Updated driver profile verification status for user ${userId}`);
             }
@@ -86,7 +86,7 @@ export class UserStatusSyncService {
                 )
             `;
             const result = await this.postgresService.query(query, [verificationStatus, userId]);
-            
+
             if (result.rowCount > 0) {
                 this.logger.log(`✅ Updated vehicle verification status for user ${userId}`);
             }
@@ -107,7 +107,7 @@ export class UserStatusSyncService {
                 WHERE user_id = $2
             `;
             const result = await this.postgresService.query(query, [verificationStatus, userId]);
-            
+
             if (result.rowCount > 0) {
                 this.logger.log(`✅ Updated document verification status for user ${userId}`);
             }
