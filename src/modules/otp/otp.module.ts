@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { OtpService } from './otp.service';
@@ -7,6 +7,7 @@ import { SupabaseAuthService } from './supabase-auth.service';
 import { AfroMessageService } from './afro-message.service';
 import { DatabaseModule } from '../database/database.module';
 import { AuthPostgresService } from '../auth/auth-postgres.service';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { AuthPostgresService } from '../auth/auth-postgres.service';
         },
       }),
     }),
+    forwardRef(() => UsersModule),
   ],
   controllers: [OtpController],
   providers: [OtpService, SupabaseAuthService, AfroMessageService, AuthPostgresService],
