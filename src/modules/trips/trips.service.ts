@@ -128,7 +128,7 @@ export class TripsService {
                 driverProfile.id,
                 activeVehicle.id,
                 activeVehicle.vehicle_type_id, // Use the correct field name
-                'requested',
+                'accepted', // Driver-initiated trips start as accepted
                 createTripDto.pickup_address,
                 createTripDto.pickup_latitude,
                 createTripDto.pickup_longitude,
@@ -193,7 +193,7 @@ export class TripsService {
                 createTripDto.dropoff_longitude, // For ST_Point
                 createTripDto.dropoff_latitude,  // For ST_Point
                 Math.round((createTripDto.estimated_fare || 0) * 100), // Convert to cents
-                'created',
+                'accepted', // Driver-initiated pickups start as accepted
                 createTripDto.notes || null
             ];
 
@@ -307,9 +307,9 @@ export class TripsService {
             // Update driver pickup status
             const pickupQuery = `
         UPDATE driver_pickups 
-        SET status = 'accepted',
+        SET status = 'in_progress',
             completed_at = NOW()
-        WHERE driver_id = $1 AND status = 'created'
+        WHERE driver_id = $1 AND status = 'accepted'
         RETURNING *
       `;
 
