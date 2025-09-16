@@ -4,11 +4,13 @@ import { ConfigService } from '@nestjs/config';
 import { SocketGateway } from './socket.gateway';
 import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
+import { DriverProfilesModule } from '../driver-profiles/driver-profiles.module';
 
 @Module({
     imports: [
         AuthModule,
         DatabaseModule,
+        DriverProfilesModule,
         JwtModule.registerAsync({
             inject: [ConfigService],
             useFactory: (configService: ConfigService) => ({
