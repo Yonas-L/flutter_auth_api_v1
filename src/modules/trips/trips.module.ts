@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
+import { TripStatusSyncService } from './trip-status-sync.service';
 import { DatabaseModule } from '../database/database.module';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { VehiclesPostgresRepository } from '../database/repositories/vehicles-postgres.repository';
@@ -10,6 +11,7 @@ import { VehiclesPostgresRepository } from '../database/repositories/vehicles-po
     controllers: [TripsController],
     providers: [
         TripsService,
+        TripStatusSyncService,
         DriverProfilesPostgresRepository,
         VehiclesPostgresRepository,
     ],

@@ -2,6 +2,7 @@ import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
 import { PostgresService } from '../database/postgres.service';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { VehiclesPostgresRepository } from '../database/repositories/vehicles-postgres.repository';
+import { TripStatusSyncService } from './trip-status-sync.service';
 
 @Injectable()
 export class TripsService {
@@ -11,6 +12,7 @@ export class TripsService {
         private readonly postgresService: PostgresService,
         private readonly driverProfilesRepository: DriverProfilesPostgresRepository,
         private readonly vehiclesRepository: VehiclesPostgresRepository,
+        private readonly tripStatusSyncService: TripStatusSyncService,
     ) { }
 
     async createTrip(driverUserId: string, createTripDto: any) {
@@ -473,6 +475,18 @@ export class TripsService {
             throw error;
         } finally {
             client.release();
+        }
+    }
+
+    /**
+     * Update trip status and sync with driver profile
+     */
+    async updateTripStatus(tripId: string, newStatus: string, driverId?: string): Promise<void> {
+        try {
+            await this.tripStatusSyncService.updateTripStatus(tripId, newStatus, driverId);
+        } catch (error) {
+            this.logger.error(`Error updating trip status for ${tripId}:`, error);
+            throw error;
         }
     }
 }
