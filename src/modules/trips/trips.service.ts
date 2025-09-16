@@ -553,7 +553,7 @@ export class TripsService {
                     u.avatar_url as passenger_avatar_url,
                     v.make as vehicle_make,
                     v.model as vehicle_model,
-                    v.license_plate as vehicle_plate_number,
+                    v.plate_number as vehicle_plate_number,
                     v.color as vehicle_color
                 FROM trips t
                 LEFT JOIN users u ON t.passenger_id = u.id
@@ -632,7 +632,7 @@ export class TripsService {
                     u.avatar_url as passenger_avatar_url,
                     v.make as vehicle_make,
                     v.model as vehicle_model,
-                    v.license_plate as vehicle_plate_number,
+                    v.plate_number as vehicle_plate_number,
                     v.color as vehicle_color
                 FROM trips t
                 LEFT JOIN users u ON t.passenger_id = u.id
