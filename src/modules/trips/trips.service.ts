@@ -117,7 +117,7 @@ export class TripsService {
           trip_reference
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, ST_Point($9, $10)::point,
-          $11, $12, $13, ST_Point($14, $15)::point, $16, $17, $18, $19, $20, $21, $22, $23
+          $11, $12, $13, ST_Point($14, $15)::point, $16, $17, $18, $19, $20, $21, $22, $23, $24
         ) RETURNING *
       `;
 
