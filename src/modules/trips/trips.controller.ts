@@ -1,4 +1,4 @@
-import { Controller, Get, Query, Param, UseGuards, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, Body, UseGuards, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { TripsService } from './trips.service';
@@ -10,6 +10,28 @@ export class TripsController {
     private readonly logger = new Logger(TripsController.name);
 
     constructor(private readonly tripsService: TripsService) { }
+
+    @Post()
+    async createTrip(
+        @CurrentUser() user: User,
+        @Body() createTripDto: any,
+    ) {
+        try {
+            const trip = await this.tripsService.createTrip(user.id, createTripDto);
+
+            return {
+                success: true,
+                trip,
+                message: 'Trip created successfully',
+            };
+        } catch (error) {
+            this.logger.error(`Error creating trip for user ${user.id}:`, error);
+            throw new HttpException(
+                'Failed to create trip',
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
 
     @Get('history')
     async getTripHistory(
