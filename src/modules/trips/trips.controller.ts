@@ -1,145 +1,114 @@
-import {
-    Controller,
-    Post,
-    Body,
-    UseGuards,
-    Request,
-    HttpException,
-    HttpStatus,
-    Logger,
-    Get,
-    Param,
-    Put,
-} from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { Controller, Get, Query, Param, UseGuards, HttpException, HttpStatus, Logger } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { CurrentUser } from '../auth/current-user.decorator';
 import { TripsService } from './trips.service';
+import { User } from '../database/entities/user.entity';
 
 @Controller('api/trips')
+@UseGuards(JwtAuthGuard)
 export class TripsController {
     private readonly logger = new Logger(TripsController.name);
 
     constructor(private readonly tripsService: TripsService) { }
 
-    @Post()
-    @UseGuards(AuthGuard('jwt'))
-    async createTrip(@Request() req: any, @Body() createTripDto: any) {
+    @Get('history')
+    async getTripHistory(
+        @CurrentUser() user: User,
+        @Query('page') page: string = '1',
+        @Query('limit') limit: string = '20',
+        @Query('status') status?: string,
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ) {
         try {
-            const userId = req.user.id;
-            this.logger.log(`Creating trip for driver: ${userId}`);
+            const pageNum = parseInt(page, 10) || 1;
+            const limitNum = parseInt(limit, 10) || 20;
 
-            const trip = await this.tripsService.createTrip(userId, createTripDto);
+            const filters = {
+                status: status && status !== 'all' ? status : undefined,
+                startDate: startDate ? new Date(startDate) : undefined,
+                endDate: endDate ? new Date(endDate) : undefined,
+            };
 
-            this.logger.log(`Trip created successfully: ${trip.id}`);
+            const result = await this.tripsService.getTripHistory(
+                user.id,
+                pageNum,
+                limitNum,
+                filters,
+            );
+
             return {
                 success: true,
-                trip,
-                message: 'Trip created successfully'
+                trips: result.trips,
+                pagination: {
+                    page: pageNum,
+                    limit: limitNum,
+                    total: result.total,
+                    totalPages: Math.ceil(result.total / limitNum),
+                    hasMore: pageNum * limitNum < result.total,
+                },
             };
         } catch (error) {
-            this.logger.error('Error creating trip:', error);
+            this.logger.error(`Error fetching trip history for user ${user.id}:`, error);
             throw new HttpException(
-                error.message || 'Failed to create trip',
-                error.status || HttpStatus.INTERNAL_SERVER_ERROR
+                'Failed to fetch trip history',
+                HttpStatus.INTERNAL_SERVER_ERROR,
             );
         }
     }
 
-    @Get('active')
-    @UseGuards(AuthGuard('jwt'))
-    async getActiveTrip(@Request() req: any) {
+    @Get(':id')
+    async getTripDetail(
+        @CurrentUser() user: User,
+        @Param('id') tripId: string,
+    ) {
         try {
-            const userId = req.user.id;
-            this.logger.log(`Getting active trip for driver: ${userId}`);
-
-            const trip = await this.tripsService.getActiveTrip(userId);
+            const trip = await this.tripsService.getTripDetail(tripId, user.id);
 
             if (!trip) {
-                return {
-                    success: true,
-                    trip: null,
-                    message: 'No active trip found'
-                };
+                throw new HttpException('Trip not found', HttpStatus.NOT_FOUND);
             }
 
             return {
                 success: true,
                 trip,
-                message: 'Active trip retrieved successfully'
             };
         } catch (error) {
-            this.logger.error('Error getting active trip:', error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+
+            this.logger.error(`Error fetching trip detail ${tripId}:`, error);
             throw new HttpException(
-                error.message || 'Failed to get active trip',
-                error.status || HttpStatus.INTERNAL_SERVER_ERROR
+                'Failed to fetch trip detail',
+                HttpStatus.INTERNAL_SERVER_ERROR,
             );
         }
     }
 
-    @Put(':id/start')
-    @UseGuards(AuthGuard('jwt'))
-    async startTrip(@Request() req: any, @Param('id') tripId: string) {
+    @Get('statistics')
+    async getTripStatistics(
+        @CurrentUser() user: User,
+        @Query('start_date') startDate?: string,
+        @Query('end_date') endDate?: string,
+    ) {
         try {
-            const userId = req.user.id;
-            this.logger.log(`Starting trip ${tripId} for driver: ${userId}`);
+            const filters = {
+                startDate: startDate ? new Date(startDate) : undefined,
+                endDate: endDate ? new Date(endDate) : undefined,
+            };
 
-            const trip = await this.tripsService.startTrip(userId, tripId);
+            const statistics = await this.tripsService.getTripStatistics(user.id, filters);
 
             return {
                 success: true,
-                trip,
-                message: 'Trip started successfully'
+                ...statistics,
             };
         } catch (error) {
-            this.logger.error('Error starting trip:', error);
+            this.logger.error(`Error fetching trip statistics for user ${user.id}:`, error);
             throw new HttpException(
-                error.message || 'Failed to start trip',
-                error.status || HttpStatus.INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    @Put(':id/cancel')
-    @UseGuards(AuthGuard('jwt'))
-    async cancelTrip(@Request() req: any, @Param('id') tripId: string, @Body() cancelData: any) {
-        try {
-            const userId = req.user.id;
-            this.logger.log(`Canceling trip ${tripId} for driver: ${userId}`);
-
-            const trip = await this.tripsService.cancelTrip(userId, tripId, cancelData);
-
-            return {
-                success: true,
-                trip,
-                message: 'Trip canceled successfully'
-            };
-        } catch (error) {
-            this.logger.error('Error canceling trip:', error);
-            throw new HttpException(
-                error.message || 'Failed to cancel trip',
-                error.status || HttpStatus.INTERNAL_SERVER_ERROR
-            );
-        }
-    }
-
-    @Put(':id/complete')
-    @UseGuards(AuthGuard('jwt'))
-    async completeTrip(@Request() req: any, @Param('id') tripId: string, @Body() completeData: any) {
-        try {
-            const userId = req.user.id;
-            this.logger.log(`Completing trip ${tripId} for driver: ${userId}`);
-
-            const trip = await this.tripsService.completeTrip(userId, tripId, completeData);
-
-            return {
-                success: true,
-                trip,
-                message: 'Trip completed successfully'
-            };
-        } catch (error) {
-            this.logger.error('Error completing trip:', error);
-            throw new HttpException(
-                error.message || 'Failed to complete trip',
-                error.status || HttpStatus.INTERNAL_SERVER_ERROR
+                'Failed to fetch trip statistics',
+                HttpStatus.INTERNAL_SERVER_ERROR,
             );
         }
     }

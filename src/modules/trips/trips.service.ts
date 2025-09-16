@@ -489,4 +489,346 @@ export class TripsService {
             throw error;
         }
     }
+
+    async getTripHistory(
+        driverUserId: string,
+        page: number,
+        limit: number,
+        filters: {
+            status?: string;
+            startDate?: Date;
+            endDate?: Date;
+        } = {},
+    ) {
+        try {
+            const client = await this.postgresService.getClient();
+
+            // Get driver profile
+            const driverProfile = await this.driverProfilesRepository.findByUserId(driverUserId);
+            if (!driverProfile) {
+                throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
+            }
+
+            // Build query conditions
+            let whereConditions = ['t.driver_id = $1'];
+            let queryParams: any[] = [driverProfile.id];
+            let paramIndex = 2;
+
+            if (filters.status) {
+                whereConditions.push(`t.status = $${paramIndex}`);
+                queryParams.push(filters.status);
+                paramIndex++;
+            }
+
+            if (filters.startDate) {
+                whereConditions.push(`t.request_timestamp >= $${paramIndex}`);
+                queryParams.push(filters.startDate);
+                paramIndex++;
+            }
+
+            if (filters.endDate) {
+                whereConditions.push(`t.request_timestamp <= $${paramIndex}`);
+                queryParams.push(filters.endDate);
+                paramIndex++;
+            }
+
+            const whereClause = whereConditions.join(' AND ');
+
+            // Get total count
+            const countQuery = `
+                SELECT COUNT(*) as total
+                FROM trips t
+                WHERE ${whereClause}
+            `;
+            const countResult = await client.query(countQuery, queryParams);
+            const total = parseInt(countResult.rows[0].total, 10);
+
+            // Get trips with pagination
+            const offset = (page - 1) * limit;
+            const tripsQuery = `
+                SELECT 
+                    t.*,
+                    u.full_name as passenger_name,
+                    u.phone_number as passenger_phone,
+                    u.avatar_url as passenger_avatar_url,
+                    v.make as vehicle_make,
+                    v.model as vehicle_model,
+                    v.license_plate as vehicle_plate_number,
+                    v.color as vehicle_color
+                FROM trips t
+                LEFT JOIN users u ON t.passenger_id = u.id
+                LEFT JOIN vehicles v ON t.vehicle_id = v.id
+                WHERE ${whereClause}
+                ORDER BY t.request_timestamp DESC
+                LIMIT $${paramIndex} OFFSET $${paramIndex + 1}
+            `;
+
+            queryParams.push(limit, offset);
+            const tripsResult = await client.query(tripsQuery, queryParams);
+
+            // Transform trips data
+            const trips = tripsResult.rows.map(row => ({
+                id: row.id,
+                trip_reference: row.trip_reference,
+                status: row.status,
+                pickup_address: row.pickup_address,
+                pickup_latitude: row.pickup_latitude,
+                pickup_longitude: row.pickup_longitude,
+                dropoff_address: row.dropoff_address,
+                dropoff_latitude: row.dropoff_latitude,
+                dropoff_longitude: row.dropoff_longitude,
+                estimated_distance_km: row.estimated_distance_km,
+                estimated_duration_minutes: row.estimated_duration_minutes,
+                estimated_fare_cents: row.estimated_fare_cents,
+                final_fare_cents: row.final_fare_cents,
+                actual_distance_km: row.actual_distance_km,
+                actual_duration_minutes: row.actual_duration_minutes,
+                trip_type: row.trip_type,
+                passenger_count: row.passenger_count,
+                payment_method: row.payment_method,
+                payment_status: row.payment_status,
+                driver_earnings_cents: row.driver_earnings_cents,
+                tip_cents: row.tip_cents,
+                trip_notes: row.trip_notes,
+                request_timestamp: row.request_timestamp,
+                completed_at: row.completed_at,
+                passenger_name: row.passenger_name,
+                passenger_phone: row.passenger_phone,
+                passenger_avatar_url: row.passenger_avatar_url,
+                vehicle_make: row.vehicle_make,
+                vehicle_model: row.vehicle_model,
+                vehicle_plate_number: row.vehicle_plate_number,
+                vehicle_color: row.vehicle_color,
+            }));
+
+            return {
+                trips,
+                total,
+            };
+        } catch (error) {
+            this.logger.error(`Error fetching trip history:`, error);
+            throw error;
+        }
+    }
+
+    async getTripDetail(tripId: string, driverUserId: string) {
+        try {
+            const client = await this.postgresService.getClient();
+
+            // Get driver profile
+            const driverProfile = await this.driverProfilesRepository.findByUserId(driverUserId);
+            if (!driverProfile) {
+                throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
+            }
+
+            // Get trip details
+            const tripQuery = `
+                SELECT 
+                    t.*,
+                    u.full_name as passenger_name,
+                    u.phone_number as passenger_phone,
+                    u.avatar_url as passenger_avatar_url,
+                    v.make as vehicle_make,
+                    v.model as vehicle_model,
+                    v.license_plate as vehicle_plate_number,
+                    v.color as vehicle_color
+                FROM trips t
+                LEFT JOIN users u ON t.passenger_id = u.id
+                LEFT JOIN vehicles v ON t.vehicle_id = v.id
+                WHERE t.id = $1 AND t.driver_id = $2
+            `;
+
+            const tripResult = await client.query(tripQuery, [tripId, driverProfile.id]);
+
+            if (tripResult.rows.length === 0) {
+                return null;
+            }
+
+            const trip = tripResult.rows[0];
+
+            // Get trip events (simplified for now)
+            const events = [
+                {
+                    type: 'requested',
+                    description: 'Trip requested',
+                    timestamp: trip.request_timestamp,
+                    metadata: {},
+                },
+            ];
+
+            if (trip.accepted_at) {
+                events.push({
+                    type: 'accepted',
+                    description: 'Trip accepted',
+                    timestamp: trip.accepted_at,
+                    metadata: {},
+                });
+            }
+
+            if (trip.started_at) {
+                events.push({
+                    type: 'started',
+                    description: 'Trip started',
+                    timestamp: trip.started_at,
+                    metadata: {},
+                });
+            }
+
+            if (trip.completed_at) {
+                events.push({
+                    type: 'completed',
+                    description: 'Trip completed',
+                    timestamp: trip.completed_at,
+                    metadata: {},
+                });
+            }
+
+            // Sort events by timestamp
+            events.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+            return {
+                id: trip.id,
+                trip_reference: trip.trip_reference,
+                status: trip.status,
+                pickup_address: trip.pickup_address,
+                pickup_latitude: trip.pickup_latitude,
+                pickup_longitude: trip.pickup_longitude,
+                dropoff_address: trip.dropoff_address,
+                dropoff_latitude: trip.dropoff_latitude,
+                dropoff_longitude: trip.dropoff_longitude,
+                estimated_distance_km: trip.estimated_distance_km,
+                estimated_duration_minutes: trip.estimated_duration_minutes,
+                estimated_fare_cents: trip.estimated_fare_cents,
+                final_fare_cents: trip.final_fare_cents,
+                actual_distance_km: trip.actual_distance_km,
+                actual_duration_minutes: trip.actual_duration_minutes,
+                trip_type: trip.trip_type,
+                passenger_count: trip.passenger_count,
+                payment_method: trip.payment_method,
+                payment_status: trip.payment_status,
+                driver_earnings_cents: trip.driver_earnings_cents,
+                tip_cents: trip.tip_cents,
+                trip_notes: trip.trip_notes,
+                request_timestamp: trip.request_timestamp,
+                accepted_at: trip.accepted_at,
+                started_at: trip.started_at,
+                completed_at: trip.completed_at,
+                passenger_name: trip.passenger_name,
+                passenger_phone: trip.passenger_phone,
+                passenger_avatar_url: trip.passenger_avatar_url,
+                vehicle_make: trip.vehicle_make,
+                vehicle_model: trip.vehicle_model,
+                vehicle_plate_number: trip.vehicle_plate_number,
+                vehicle_color: trip.vehicle_color,
+                events,
+            };
+        } catch (error) {
+            this.logger.error(`Error fetching trip detail:`, error);
+            throw error;
+        }
+    }
+
+    async getTripStatistics(
+        driverUserId: string,
+        filters: {
+            startDate?: Date;
+            endDate?: Date;
+        } = {},
+    ) {
+        try {
+            const client = await this.postgresService.getClient();
+
+            // Get driver profile
+            const driverProfile = await this.driverProfilesRepository.findByUserId(driverUserId);
+            if (!driverProfile) {
+                throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
+            }
+
+            // Build date conditions
+            let dateConditions = ['t.driver_id = $1'];
+            let queryParams: any[] = [driverProfile.id];
+            let paramIndex = 2;
+
+            if (filters.startDate) {
+                dateConditions.push(`t.request_timestamp >= $${paramIndex}`);
+                queryParams.push(filters.startDate);
+                paramIndex++;
+            }
+
+            if (filters.endDate) {
+                dateConditions.push(`t.request_timestamp <= $${paramIndex}`);
+                queryParams.push(filters.endDate);
+                paramIndex++;
+            }
+
+            const whereClause = dateConditions.join(' AND ');
+
+            // Get overall statistics
+            const statsQuery = `
+                SELECT 
+                    COUNT(*) as total_trips,
+                    COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_trips,
+                    COUNT(CASE WHEN status = 'canceled' THEN 1 END) as canceled_trips,
+                    COALESCE(SUM(driver_earnings_cents), 0) as total_earnings_cents,
+                    COALESCE(AVG(driver_earnings_cents), 0) as average_fare_cents,
+                    COALESCE(SUM(estimated_distance_km), 0) as total_distance_km,
+                    COALESCE(SUM(estimated_duration_minutes), 0) as total_duration_minutes
+                FROM trips t
+                WHERE ${whereClause}
+            `;
+
+            const statsResult = await client.query(statsQuery, queryParams);
+            const stats = statsResult.rows[0];
+
+            // Get this week's statistics
+            const weekStart = new Date();
+            weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            weekStart.setHours(0, 0, 0, 0);
+
+            const weekQuery = `
+                SELECT 
+                    COUNT(*) as this_week_trips,
+                    COALESCE(SUM(driver_earnings_cents), 0) as this_week_earnings_cents
+                FROM trips t
+                WHERE t.driver_id = $1 AND t.request_timestamp >= $2
+            `;
+
+            const weekResult = await client.query(weekQuery, [driverProfile.id, weekStart]);
+            const weekStats = weekResult.rows[0];
+
+            // Get this month's statistics
+            const monthStart = new Date();
+            monthStart.setDate(1);
+            monthStart.setHours(0, 0, 0, 0);
+
+            const monthQuery = `
+                SELECT 
+                    COUNT(*) as this_month_trips,
+                    COALESCE(SUM(driver_earnings_cents), 0) as this_month_earnings_cents
+                FROM trips t
+                WHERE t.driver_id = $1 AND t.request_timestamp >= $2
+            `;
+
+            const monthResult = await client.query(monthQuery, [driverProfile.id, monthStart]);
+            const monthStats = monthResult.rows[0];
+
+            return {
+                total_trips: parseInt(stats.total_trips, 10),
+                completed_trips: parseInt(stats.completed_trips, 10),
+                canceled_trips: parseInt(stats.canceled_trips, 10),
+                total_earnings: parseFloat(stats.total_earnings_cents) / 100,
+                average_rating: 0.0, // TODO: Implement rating system
+                total_distance_km: parseInt(stats.total_distance_km, 10),
+                total_duration_minutes: parseInt(stats.total_duration_minutes, 10),
+                average_fare: parseFloat(stats.average_fare_cents) / 100,
+                this_week_trips: parseInt(weekStats.this_week_trips, 10),
+                this_month_trips: parseInt(monthStats.this_month_trips, 10),
+                this_week_earnings: parseFloat(weekStats.this_week_earnings_cents) / 100,
+                this_month_earnings: parseFloat(monthStats.this_month_earnings_cents) / 100,
+            };
+        } catch (error) {
+            this.logger.error(`Error fetching trip statistics:`, error);
+            throw error;
+        }
+    }
 }
