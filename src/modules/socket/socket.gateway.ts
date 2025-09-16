@@ -12,6 +12,7 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersPostgresRepository } from '../database/repositories/users-postgres.repository';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
+import { PostgresService } from '../database/postgres.service';
 
 interface AuthenticatedSocket extends Socket {
     userId: string;
@@ -35,6 +36,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         private jwtService: JwtService,
         private usersRepository: UsersPostgresRepository,
         private driverProfilesRepository: DriverProfilesPostgresRepository,
+        private postgresService: PostgresService,
     ) { }
 
     async handleConnection(client: Socket) {
@@ -285,17 +287,23 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 return;
             }
 
-            // Update driver profile with new location
-            const updatedProfile = await this.driverProfilesRepository.update(driverProfile.id, {
-                last_known_location: `POINT(${location.lng} ${location.lat})`, // PostGIS format: lng lat
-                last_location_update: new Date().toISOString(),
-            });
+            // Update driver profile with new location using direct SQL query
+            const updateLocationQuery = `
+                UPDATE driver_profiles 
+                SET last_known_location = ST_Point($1, $2)::point,
+                    last_location_update = $3,
+                    updated_at = NOW()
+                WHERE id = $4
+            `;
+            
+            await this.postgresService.query(updateLocationQuery, [
+                location.lng,
+                location.lat,
+                new Date().toISOString(),
+                driverProfile.id
+            ]);
 
-            if (updatedProfile) {
-                this.logger.log(`✅ Driver location updated successfully for ${userId}`);
-            } else {
-                this.logger.error(`Failed to update driver location for ${userId}`);
-            }
+            this.logger.log(`✅ Driver location updated successfully for ${userId}`);
 
         } catch (error) {
             this.logger.error(`Error updating driver location:`, error);
