@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { UsersRepository } from '../database/repositories/users.repository';
 import { User, CreateUserData, UpdateUserData } from '../database/entities/user.entity';
+import { UserStatusSyncService } from './user-status-sync.service';
 
 @Injectable()
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  constructor(private readonly usersRepository: UsersRepository) { }
+  constructor(
+    private readonly usersRepository: UsersRepository,
+    private readonly userStatusSyncService: UserStatusSyncService
+  ) { }
 
   async findByEmail(email: string): Promise<User | null> {
     try {
@@ -60,7 +64,14 @@ export class UsersService {
 
   async updateById(id: string, updateData: UpdateUserData): Promise<User | null> {
     try {
-      return await this.usersRepository.update(id, updateData);
+      const updatedUser = await this.usersRepository.update(id, updateData);
+      
+      // If status was updated, sync across related tables
+      if (updatedUser && updateData.status) {
+        await this.userStatusSyncService.syncUserStatus(id, updateData.status);
+      }
+      
+      return updatedUser;
     } catch (error) {
       this.logger.error(`Error updating user ${id}:`, error);
       throw error;

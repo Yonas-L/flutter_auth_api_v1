@@ -2,6 +2,7 @@ import { Injectable, BadRequestException, UnauthorizedException, Logger } from '
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { UsersPostgresRepository } from '../database/repositories/users-postgres.repository';
+import { UserStatusSyncService } from '../users/user-status-sync.service';
 import { OtpService } from '../otp/otp.service';
 import { AfroMessageService } from '../otp/afro-message.service';
 import * as bcrypt from 'bcrypt';
@@ -36,6 +37,7 @@ export class AuthPostgresService {
         private jwtService: JwtService,
         private configService: ConfigService,
         private usersRepository: UsersPostgresRepository,
+        private userStatusSyncService: UserStatusSyncService,
         private otpService: OtpService,
         private afroMessageService: AfroMessageService,
     ) { }
@@ -136,6 +138,9 @@ export class AuthPostgresService {
                     status: 'verified',
                 });
                 this.logger.log(`✅ Created new driver user: ${user.id}`);
+                
+                // Sync status across related tables
+                await this.userStatusSyncService.syncUserStatus(user.id, 'verified');
             } else {
                 // Update last login and verification status
                 await this.usersRepository.updateLastLogin(user.id);

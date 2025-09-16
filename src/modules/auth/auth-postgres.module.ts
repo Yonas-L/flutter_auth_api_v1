@@ -7,6 +7,7 @@ import { AuthPostgresController } from './auth-postgres.controller';
 import { JwtPostgresStrategy } from './strategies/jwt-postgres.strategy';
 import { DatabaseModule } from '../database/database.module';
 import { OtpModule } from '../otp/otp.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
     imports: [
@@ -22,6 +23,7 @@ import { OtpModule } from '../otp/otp.module';
         }),
         DatabaseModule, // For UsersPostgresRepository
         OtpModule, // For OTP services
+        UsersModule, // For UserStatusSyncService
     ],
     controllers: [AuthPostgresController],
     providers: [
