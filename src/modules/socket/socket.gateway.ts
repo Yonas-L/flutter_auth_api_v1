@@ -260,7 +260,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             const updatedProfile = await this.driverProfilesRepository.update(driverProfile.id, {
                 is_online: updates.is_online,
                 is_available: updates.is_available,
-                socket_id: updates.socket_id,
+                socket_id: updates.socket_id || undefined,
             });
 
             if (updatedProfile) {

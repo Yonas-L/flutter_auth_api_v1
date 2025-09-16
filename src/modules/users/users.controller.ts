@@ -121,7 +121,7 @@ export class UsersController {
             }
 
             return {
-                status: user.status,
+                status: user.status || 'pending_verification',
                 message: message
             };
         } catch (error) {

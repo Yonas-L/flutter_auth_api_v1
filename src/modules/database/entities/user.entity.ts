@@ -9,6 +9,7 @@ export interface User {
     is_phone_verified: boolean;
     is_email_verified: boolean;
     is_active: boolean;
+    status?: 'pending_verification' | 'verified' | 'active' | 'suspended' | 'deleted'; // Keep for backward compatibility
     // Passenger Backend Integration Features
     otp?: string;
     otp_expires_at?: string;
@@ -35,6 +36,7 @@ export interface CreateUserData {
     is_phone_verified?: boolean;
     is_email_verified?: boolean;
     is_active?: boolean;
+    status?: User['status']; // Keep for backward compatibility
     // Passenger Backend Integration Features
     otp?: string;
     otp_expires_at?: string;
@@ -56,6 +58,7 @@ export interface UpdateUserData {
     is_phone_verified?: boolean;
     is_email_verified?: boolean;
     is_active?: boolean;
+    status?: User['status']; // Keep for backward compatibility
     last_login_at?: string;
     // Passenger Backend Integration Features
     otp?: string;
