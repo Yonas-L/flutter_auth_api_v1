@@ -500,9 +500,9 @@ export class TripsService {
             endDate?: Date;
         } = {},
     ) {
-        try {
-            const client = await this.postgresService.getClient();
+        const client = await this.postgresService.getClient();
 
+        try {
             // Get driver profile
             const driverProfile = await this.driverProfilesRepository.findByUserId(driverUserId);
             if (!driverProfile) {
@@ -608,13 +608,15 @@ export class TripsService {
         } catch (error) {
             this.logger.error(`Error fetching trip history:`, error);
             throw error;
+        } finally {
+            client.release();
         }
     }
 
     async getTripDetail(tripId: string, driverUserId: string) {
-        try {
-            const client = await this.postgresService.getClient();
+        const client = await this.postgresService.getClient();
 
+        try {
             // Get driver profile
             const driverProfile = await this.driverProfilesRepository.findByUserId(driverUserId);
             if (!driverProfile) {
@@ -725,6 +727,8 @@ export class TripsService {
         } catch (error) {
             this.logger.error(`Error fetching trip detail:`, error);
             throw error;
+        } finally {
+            client.release();
         }
     }
 
@@ -735,9 +739,9 @@ export class TripsService {
             endDate?: Date;
         } = {},
     ) {
-        try {
-            const client = await this.postgresService.getClient();
+        const client = await this.postgresService.getClient();
 
+        try {
             // Get driver profile
             const driverProfile = await this.driverProfilesRepository.findByUserId(driverUserId);
             if (!driverProfile) {
@@ -829,6 +833,8 @@ export class TripsService {
         } catch (error) {
             this.logger.error(`Error fetching trip statistics:`, error);
             throw error;
+        } finally {
+            client.release();
         }
     }
 }
