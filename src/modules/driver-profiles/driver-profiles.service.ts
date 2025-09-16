@@ -1,5 +1,5 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
-import { DriverProfilesRepository } from '../database/repositories/driver-profiles.repository';
+import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { UsersRepository } from '../database/repositories/users.repository';
 import { VehiclesRepository } from '../database/repositories/vehicles.repository';
 import { DocumentsRepository } from '../database/repositories/documents.repository';
@@ -13,7 +13,7 @@ export class DriverProfilesService {
   private readonly logger = new Logger(DriverProfilesService.name);
 
   constructor(
-    private readonly driverProfilesRepository: DriverProfilesRepository,
+    private readonly driverProfilesRepository: DriverProfilesPostgresRepository,
     private readonly usersRepository: UsersRepository,
     private readonly vehiclesRepository: VehiclesRepository,
     private readonly documentsRepository: DocumentsRepository,

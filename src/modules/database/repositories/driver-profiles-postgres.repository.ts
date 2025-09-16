@@ -4,10 +4,11 @@ import { PostgresService } from '../postgres.service';
 export interface DriverProfile {
     id: string;
     user_id: string;
+    full_name?: string;
     first_name?: string;
     last_name?: string;
     date_of_birth?: string;
-    gender?: 'male' | 'female' | 'other';
+    gender?: 'male' | 'female' | 'other' | 'Male' | 'Female' | 'Other';
     city?: string;
     emergency_contact_name?: string;
     emergency_contact_phone?: string;
@@ -34,7 +35,7 @@ export interface CreateDriverProfileData {
     first_name?: string;
     last_name?: string;
     date_of_birth?: string;
-    gender?: 'male' | 'female' | 'other';
+    gender?: 'male' | 'female' | 'other' | 'Male' | 'Female' | 'Other';
     city?: string;
     emergency_contact_name?: string;
     emergency_contact_phone?: string;
@@ -47,7 +48,7 @@ export interface UpdateDriverProfileData {
     first_name?: string;
     last_name?: string;
     date_of_birth?: string;
-    gender?: 'male' | 'female' | 'other';
+    gender?: 'male' | 'female' | 'other' | 'Male' | 'Female' | 'Other';
     city?: string;
     emergency_contact_name?: string;
     emergency_contact_phone?: string;
@@ -236,6 +237,7 @@ export class DriverProfilesPostgresRepository {
         return {
             id: row.id,
             user_id: row.user_id,
+            full_name: row.full_name,
             first_name: row.first_name,
             last_name: row.last_name,
             date_of_birth: row.date_of_birth,

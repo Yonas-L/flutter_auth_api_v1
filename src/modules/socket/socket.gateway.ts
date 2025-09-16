@@ -295,7 +295,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     updated_at = NOW()
                 WHERE id = $4
             `;
-            
+
             await this.postgresService.query(updateLocationQuery, [
                 location.lng,
                 location.lat,
