@@ -57,35 +57,6 @@ export class TripsController {
         }
     }
 
-    @Get(':id')
-    async getTripDetail(
-        @CurrentUser() user: User,
-        @Param('id') tripId: string,
-    ) {
-        try {
-            const trip = await this.tripsService.getTripDetail(tripId, user.id);
-
-            if (!trip) {
-                throw new HttpException('Trip not found', HttpStatus.NOT_FOUND);
-            }
-
-            return {
-                success: true,
-                trip,
-            };
-        } catch (error) {
-            if (error instanceof HttpException) {
-                throw error;
-            }
-
-            this.logger.error(`Error fetching trip detail ${tripId}:`, error);
-            throw new HttpException(
-                'Failed to fetch trip detail',
-                HttpStatus.INTERNAL_SERVER_ERROR,
-            );
-        }
-    }
-
     @Get('statistics')
     async getTripStatistics(
         @CurrentUser() user: User,
@@ -108,6 +79,67 @@ export class TripsController {
             this.logger.error(`Error fetching trip statistics for user ${user.id}:`, error);
             throw new HttpException(
                 'Failed to fetch trip statistics',
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    @Get('active')
+    async getActiveTrip(@CurrentUser() user: User) {
+        try {
+            const activeTrip = await this.tripsService.getActiveTrip(user.id);
+
+            if (!activeTrip) {
+                return {
+                    success: true,
+                    trip: null,
+                    message: 'No active trip found',
+                };
+            }
+
+            return {
+                success: true,
+                trip: activeTrip,
+            };
+        } catch (error) {
+            this.logger.error(`Error fetching active trip for user ${user.id}:`, error);
+            throw new HttpException(
+                'Failed to fetch active trip',
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    @Get(':id')
+    async getTripDetail(
+        @CurrentUser() user: User,
+        @Param('id') tripId: string,
+    ) {
+        try {
+            // Validate that tripId is a valid UUID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(tripId)) {
+                throw new HttpException('Invalid trip ID format', HttpStatus.BAD_REQUEST);
+            }
+
+            const trip = await this.tripsService.getTripDetail(tripId, user.id);
+
+            if (!trip) {
+                throw new HttpException('Trip not found', HttpStatus.NOT_FOUND);
+            }
+
+            return {
+                success: true,
+                trip,
+            };
+        } catch (error) {
+            if (error instanceof HttpException) {
+                throw error;
+            }
+
+            this.logger.error(`Error fetching trip detail ${tripId}:`, error);
+            throw new HttpException(
+                'Failed to fetch trip detail',
                 HttpStatus.INTERNAL_SERVER_ERROR,
             );
         }
