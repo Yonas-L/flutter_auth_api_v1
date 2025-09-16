@@ -2,13 +2,13 @@ export interface User {
     id: string;
     phone_number?: string; // Match actual database schema
     email?: string;
-    display_name?: string; // Match actual database schema
+    full_name?: string; // Match actual database schema (unified schema uses full_name)
+    display_name?: string; // Keep for backward compatibility
     avatar_url?: string;
     user_type: 'passenger' | 'driver' | 'admin';
     is_phone_verified: boolean;
     is_email_verified: boolean;
     is_active: boolean;
-    status: 'pending_verification' | 'verified' | 'active' | 'suspended' | 'deleted';
     // Passenger Backend Integration Features
     otp?: string;
     otp_expires_at?: string;
@@ -28,13 +28,13 @@ export interface CreateUserData {
     id?: string; // Auth user ID
     phone_number?: string; // Match actual database schema
     email?: string;
-    display_name?: string; // Match actual database schema
+    full_name?: string; // Match actual database schema (unified schema uses full_name)
+    display_name?: string; // Keep for backward compatibility
     avatar_url?: string;
     user_type?: User['user_type'];
     is_phone_verified?: boolean;
     is_email_verified?: boolean;
     is_active?: boolean;
-    status?: User['status'];
     // Passenger Backend Integration Features
     otp?: string;
     otp_expires_at?: string;
@@ -49,13 +49,13 @@ export interface CreateUserData {
 export interface UpdateUserData {
     phone_number?: string; // Match actual database schema
     email?: string;
-    display_name?: string; // Match actual database schema
+    full_name?: string; // Match actual database schema (unified schema uses full_name)
+    display_name?: string; // Keep for backward compatibility
     avatar_url?: string;
     user_type?: User['user_type'];
     is_phone_verified?: boolean;
     is_email_verified?: boolean;
     is_active?: boolean;
-    status?: User['status'];
     last_login_at?: string;
     // Passenger Backend Integration Features
     otp?: string;

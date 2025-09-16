@@ -66,8 +66,8 @@ export class TripsService {
                 } else {
                     // Create new passenger user
                     const createUserQuery = `
-            INSERT INTO users (phone_number, display_name, user_type, is_phone_verified, is_active, status, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+            INSERT INTO users (phone_number, full_name, user_type, is_phone_verified, is_active, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
             RETURNING id
           `;
                     const newUserResult = await client.query(createUserQuery, [
@@ -75,8 +75,7 @@ export class TripsService {
                         createTripDto.trip_details?.passenger_name || 'Passenger',
                         'passenger',
                         true,
-                        true,
-                        'verified'
+                        true
                     ]);
                     passengerId = newUserResult.rows[0].id;
                     this.logger.log(`Created new passenger user: ${passengerId}`);

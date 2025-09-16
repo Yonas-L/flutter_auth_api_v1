@@ -11,6 +11,7 @@ import { Server, Socket } from 'socket.io';
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersPostgresRepository } from '../database/repositories/users-postgres.repository';
+import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 
 interface AuthenticatedSocket extends Socket {
     userId: string;
@@ -33,6 +34,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     constructor(
         private jwtService: JwtService,
         private usersRepository: UsersPostgresRepository,
+        private driverProfilesRepository: DriverProfilesPostgresRepository,
     ) { }
 
     async handleConnection(client: Socket) {
@@ -87,6 +89,12 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
             // Join driver room
             await client.join(`driver:${userId}`);
+
+            // Update driver status to online
+            await this.updateDriverStatus(userId, {
+                is_online: true,
+                socket_id: client.id
+            });
 
             this.logger.log(`Driver ${userId} connected with socket ${client.id}`);
 
@@ -239,12 +247,27 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         socket_id?: string | null;
     }) {
         try {
-            // For now, we'll just log the status update
-            // In a full implementation, you'd update the driver_profiles table
             this.logger.log(`Driver status update for ${userId}:`, updates);
 
-            // TODO: Implement PostgreSQL update for driver_profiles table
-            // This would require adding a driver profiles repository
+            // Find driver profile by user ID
+            const driverProfile = await this.driverProfilesRepository.findByUserId(userId);
+            if (!driverProfile) {
+                this.logger.error(`Driver profile not found for user ${userId}`);
+                return;
+            }
+
+            // Update driver profile with new status
+            const updatedProfile = await this.driverProfilesRepository.update(driverProfile.id, {
+                is_online: updates.is_online,
+                is_available: updates.is_available,
+                socket_id: updates.socket_id,
+            });
+
+            if (updatedProfile) {
+                this.logger.log(`✅ Driver status updated successfully for ${userId}`);
+            } else {
+                this.logger.error(`Failed to update driver status for ${userId}`);
+            }
 
         } catch (error) {
             this.logger.error(`Error updating driver status:`, error);
@@ -253,12 +276,26 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     private async updateDriverLocation(userId: string, location: { lat: number; lng: number }) {
         try {
-            // For now, we'll just log the location update
-            // In a full implementation, you'd update the driver_profiles table with PostGIS
             this.logger.log(`Driver location update for ${userId}:`, location);
 
-            // TODO: Implement PostgreSQL update for driver_profiles table with PostGIS
-            // This would require adding a driver profiles repository with location support
+            // Find driver profile by user ID
+            const driverProfile = await this.driverProfilesRepository.findByUserId(userId);
+            if (!driverProfile) {
+                this.logger.error(`Driver profile not found for user ${userId}`);
+                return;
+            }
+
+            // Update driver profile with new location
+            const updatedProfile = await this.driverProfilesRepository.update(driverProfile.id, {
+                last_known_location: `POINT(${location.lng} ${location.lat})`, // PostGIS format: lng lat
+                last_location_update: new Date().toISOString(),
+            });
+
+            if (updatedProfile) {
+                this.logger.log(`✅ Driver location updated successfully for ${userId}`);
+            } else {
+                this.logger.error(`Failed to update driver location for ${userId}`);
+            }
 
         } catch (error) {
             this.logger.error(`Error updating driver location:`, error);
