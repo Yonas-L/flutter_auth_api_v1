@@ -301,28 +301,28 @@ export class NotificationsService {
         await this.postgresService.query(query, [id]);
     }
 
-    private mapRowToNotification(row: any): Notification {
-        return {
-            id: row.id,
-            user_id: row.user_id,
-            title: row.title,
-            body: row.body,
-            type: row.type,
-            metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
-            is_read: row.is_read,
-            read_at: row.read_at,
-            created_at: row.created_at,
-            notification_type: row.notification_type,
-            reference_id: row.reference_id,
-            reference_type: row.reference_type,
-            priority: row.priority,
-            action_url: row.action_url,
-            expires_at: row.expires_at,
-            notification_category: row.notification_category,
-            is_silent: row.is_silent,
-            scheduled_at: row.scheduled_at,
-            sent_at: row.sent_at,
-            delivery_status: row.delivery_status,
-        };
-    }
+  private mapRowToNotification(row: any): Notification {
+    return {
+      id: row.id,
+      user_id: row.user_id,
+      title: row.title,
+      body: row.body,
+      type: row.type,
+      metadata: row.metadata ? (typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata) : undefined,
+      is_read: row.is_read,
+      read_at: row.read_at,
+      created_at: row.created_at,
+      notification_type: row.notification_type,
+      reference_id: row.reference_id,
+      reference_type: row.reference_type,
+      priority: row.priority,
+      action_url: row.action_url,
+      expires_at: row.expires_at,
+      notification_category: row.notification_category,
+      is_silent: row.is_silent,
+      scheduled_at: row.scheduled_at,
+      sent_at: row.sent_at,
+      delivery_status: row.delivery_status,
+    };
+  }
 }
