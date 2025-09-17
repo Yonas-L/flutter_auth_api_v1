@@ -58,7 +58,7 @@ export class TripsService {
 
             // Handle passenger - create user if new passenger
             let passengerId = createTripDto.passenger_id;
-            
+
             // If no passenger_id provided, try to get from phone number
             if (!passengerId && createTripDto.passenger_phone) {
                 // Check if passenger exists by phone
@@ -85,7 +85,7 @@ export class TripsService {
                     this.logger.log(`Created new passenger user: ${passengerId}`);
                 }
             }
-            
+
             // If still no passenger ID, create an anonymous passenger for driver-initiated trips
             if (!passengerId) {
                 this.logger.log('No passenger information provided, creating anonymous passenger for driver-initiated trip');
