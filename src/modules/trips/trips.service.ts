@@ -58,6 +58,8 @@ export class TripsService {
 
             // Handle passenger - create user if new passenger
             let passengerId = createTripDto.passenger_id;
+            
+            // If no passenger_id provided, try to get from phone number
             if (!passengerId && createTripDto.passenger_phone) {
                 // Check if passenger exists by phone
                 const existingUserQuery = 'SELECT id FROM users WHERE phone_number = $1';
@@ -83,10 +85,24 @@ export class TripsService {
                     this.logger.log(`Created new passenger user: ${passengerId}`);
                 }
             }
-
-            // Ensure we have a passenger ID
+            
+            // If still no passenger ID, create an anonymous passenger for driver-initiated trips
             if (!passengerId) {
-                throw new HttpException('Passenger ID is required', HttpStatus.BAD_REQUEST);
+                this.logger.log('No passenger information provided, creating anonymous passenger for driver-initiated trip');
+                const createAnonymousUserQuery = `
+            INSERT INTO users (phone_number, full_name, user_type, is_phone_verified, is_active, created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+            RETURNING id
+          `;
+                const anonymousUserResult = await client.query(createAnonymousUserQuery, [
+                    'anonymous-' + Date.now(), // Generate a unique identifier
+                    createTripDto.trip_details?.passenger_name || 'Anonymous Passenger',
+                    'passenger',
+                    false, // Not phone verified for anonymous users
+                    true
+                ]);
+                passengerId = anonymousUserResult.rows[0].id;
+                this.logger.log(`Created anonymous passenger user: ${passengerId}`);
             }
 
             // Generate trip reference
