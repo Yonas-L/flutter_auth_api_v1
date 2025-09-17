@@ -15,7 +15,7 @@ import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
 import { JwtAuthGuard } from '../modules/auth/jwt-auth.guard';
 
-@Controller('notifications')
+@Controller('api/notifications')
 @UseGuards(JwtAuthGuard)
 export class NotificationsController {
     constructor(private readonly notificationsService: NotificationsService) { }
