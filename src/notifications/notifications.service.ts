@@ -1,20 +1,76 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { Notification } from './entities/notification.entity';
+import { PostgresService } from '../modules/database/postgres.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
 
+export interface Notification {
+    id: number;
+    user_id: string;
+    title: string;
+    body: string;
+    type: string;
+    metadata?: Record<string, any>;
+    is_read: boolean;
+    read_at?: Date;
+    created_at: Date;
+    notification_type: string;
+    reference_id?: string;
+    reference_type?: string;
+    priority: string;
+    action_url?: string;
+    expires_at?: Date;
+    notification_category: string;
+    is_silent: boolean;
+    scheduled_at?: Date;
+    sent_at?: Date;
+    delivery_status: string;
+}
+
 @Injectable()
 export class NotificationsService {
-    constructor(
-        @InjectRepository(Notification)
-        private notificationRepository: Repository<Notification>,
-    ) { }
+    constructor(private postgresService: PostgresService) { }
 
     async create(createNotificationDto: CreateNotificationDto): Promise<Notification> {
-        const notification = this.notificationRepository.create(createNotificationDto);
-        return await this.notificationRepository.save(notification);
+        const {
+            user_id,
+            title,
+            body,
+            type = 'general',
+            metadata,
+            is_read = false,
+            read_at,
+            notification_type = 'general',
+            reference_id,
+            reference_type,
+            priority = 'normal',
+            action_url,
+            expires_at,
+            notification_category = 'general',
+            is_silent = false,
+            scheduled_at,
+            sent_at,
+            delivery_status = 'pending',
+        } = createNotificationDto;
+
+        const query = `
+      INSERT INTO notifications (
+        user_id, title, body, type, metadata, is_read, read_at,
+        notification_type, reference_id, reference_type, priority,
+        action_url, expires_at, notification_category, is_silent,
+        scheduled_at, sent_at, delivery_status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      RETURNING *
+    `;
+
+        const values = [
+            user_id, title, body, type, metadata ? JSON.stringify(metadata) : null,
+            is_read, read_at, notification_type, reference_id, reference_type,
+            priority, action_url, expires_at, notification_category, is_silent,
+            scheduled_at, sent_at, delivery_status
+        ];
+
+        const result = await this.postgresService.query(query, values);
+        return this.mapRowToNotification(result.rows[0]);
     }
 
     async findAll(userId: string, page: number = 1, limit: number = 20): Promise<{
@@ -23,15 +79,24 @@ export class NotificationsService {
         page: number;
         limit: number;
     }> {
-        const [notifications, total] = await this.notificationRepository.findAndCount({
-            where: { user_id: userId },
-            order: { created_at: 'DESC' },
-            skip: (page - 1) * limit,
-            take: limit,
-        });
+        const offset = (page - 1) * limit;
+
+        // Get total count
+        const countQuery = 'SELECT COUNT(*) FROM notifications WHERE user_id = $1';
+        const countResult = await this.postgresService.query(countQuery, [userId]);
+        const total = parseInt(countResult.rows[0].count);
+
+        // Get notifications
+        const query = `
+      SELECT * FROM notifications 
+      WHERE user_id = $1 
+      ORDER BY created_at DESC 
+      LIMIT $2 OFFSET $3
+    `;
+        const result = await this.postgresService.query(query, [userId, limit, offset]);
 
         return {
-            notifications,
+            notifications: result.rows.map(row => this.mapRowToNotification(row)),
             total,
             page,
             limit,
@@ -39,44 +104,93 @@ export class NotificationsService {
     }
 
     async findUnread(userId: string): Promise<Notification[]> {
-        return await this.notificationRepository.find({
-            where: {
-                user_id: userId,
-                is_read: false,
-                delivery_status: 'delivered'
-            },
-            order: { created_at: 'DESC' },
-        });
+        const query = `
+      SELECT * FROM notifications 
+      WHERE user_id = $1 AND is_read = false AND delivery_status = 'delivered'
+      ORDER BY created_at DESC
+    `;
+        const result = await this.postgresService.query(query, [userId]);
+        return result.rows.map(row => this.mapRowToNotification(row));
     }
 
     async findOne(id: number): Promise<Notification | null> {
-        return await this.notificationRepository.findOne({ where: { id } });
+        const query = 'SELECT * FROM notifications WHERE id = $1';
+        const result = await this.postgresService.query(query, [id]);
+
+        if (result.rows.length === 0) {
+            return null;
+        }
+
+        return this.mapRowToNotification(result.rows[0]);
     }
 
     async markAsRead(id: number): Promise<Notification | null> {
-        const notification = await this.findOne(id);
-        if (notification) {
-            notification.is_read = true;
-            notification.read_at = new Date();
-            return await this.notificationRepository.save(notification);
+        const query = `
+      UPDATE notifications 
+      SET is_read = true, read_at = NOW() 
+      WHERE id = $1 
+      RETURNING *
+    `;
+        const result = await this.postgresService.query(query, [id]);
+
+        if (result.rows.length === 0) {
+            return null;
         }
-        return null;
+
+        return this.mapRowToNotification(result.rows[0]);
     }
 
     async markAllAsRead(userId: string): Promise<void> {
-        await this.notificationRepository.update(
-            { user_id: userId, is_read: false },
-            { is_read: true, read_at: new Date() }
-        );
+        const query = `
+      UPDATE notifications 
+      SET is_read = true, read_at = NOW() 
+      WHERE user_id = $1 AND is_read = false
+    `;
+        await this.postgresService.query(query, [userId]);
     }
 
     async update(id: number, updateNotificationDto: UpdateNotificationDto): Promise<Notification | null> {
-        await this.notificationRepository.update(id, updateNotificationDto);
-        return await this.findOne(id);
+        const fields: string[] = [];
+        const values: any[] = [];
+        let paramCount = 1;
+
+        Object.entries(updateNotificationDto).forEach(([key, value]) => {
+            if (value !== undefined) {
+                if (key === 'metadata' && typeof value === 'object') {
+                    fields.push(`${key} = $${paramCount}`);
+                    values.push(JSON.stringify(value));
+                } else {
+                    fields.push(`${key} = $${paramCount}`);
+                    values.push(value);
+                }
+                paramCount++;
+            }
+        });
+
+        if (fields.length === 0) {
+            return await this.findOne(id);
+        }
+
+        values.push(id);
+        const query = `
+      UPDATE notifications 
+      SET ${fields.join(', ')} 
+      WHERE id = $${paramCount} 
+      RETURNING *
+    `;
+
+        const result = await this.postgresService.query(query, values);
+
+        if (result.rows.length === 0) {
+            return null;
+        }
+
+        return this.mapRowToNotification(result.rows[0]);
     }
 
     async remove(id: number): Promise<void> {
-        await this.notificationRepository.delete(id);
+        const query = 'DELETE FROM notifications WHERE id = $1';
+        await this.postgresService.query(query, [id]);
     }
 
     // Trip-specific notification methods
@@ -170,15 +284,45 @@ export class NotificationsService {
 
     // Update delivery status
     async markAsDelivered(id: number): Promise<void> {
-        await this.notificationRepository.update(id, {
-            delivery_status: 'delivered',
-            sent_at: new Date(),
-        });
+        const query = `
+      UPDATE notifications 
+      SET delivery_status = 'delivered', sent_at = NOW() 
+      WHERE id = $1
+    `;
+        await this.postgresService.query(query, [id]);
     }
 
     async markAsFailed(id: number): Promise<void> {
-        await this.notificationRepository.update(id, {
-            delivery_status: 'failed',
-        });
+        const query = `
+      UPDATE notifications 
+      SET delivery_status = 'failed' 
+      WHERE id = $1
+    `;
+        await this.postgresService.query(query, [id]);
+    }
+
+    private mapRowToNotification(row: any): Notification {
+        return {
+            id: row.id,
+            user_id: row.user_id,
+            title: row.title,
+            body: row.body,
+            type: row.type,
+            metadata: row.metadata ? JSON.parse(row.metadata) : undefined,
+            is_read: row.is_read,
+            read_at: row.read_at,
+            created_at: row.created_at,
+            notification_type: row.notification_type,
+            reference_id: row.reference_id,
+            reference_type: row.reference_type,
+            priority: row.priority,
+            action_url: row.action_url,
+            expires_at: row.expires_at,
+            notification_category: row.notification_category,
+            is_silent: row.is_silent,
+            scheduled_at: row.scheduled_at,
+            sent_at: row.sent_at,
+            delivery_status: row.delivery_status,
+        };
     }
 }
