@@ -19,6 +19,7 @@ import { SocketModule } from './modules/socket/socket.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { CloudinaryModule } from './modules/storage/cloudinary.module';
 import { TripsModule } from './modules/trips/trips.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { TripsModule } from './modules/trips/trips.module';
     StorageModule,
     CloudinaryModule,
     TripsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
