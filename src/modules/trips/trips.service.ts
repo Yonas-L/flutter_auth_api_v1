@@ -136,10 +136,12 @@ export class TripsService {
           payment_method,
           payment_status,
           request_timestamp,
-          trip_reference
+          trip_reference,
+          started_at,
+          trip_started_at
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7, $8, ST_Point($9, $10)::point,
-          $11, $12, $13, ST_Point($14, $15)::point, $16, $17, $18, $19, $20, $21, $22, $23, $24
+          $11, $12, $13, ST_Point($14, $15)::point, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW()
         ) RETURNING *
       `;
 
@@ -148,7 +150,7 @@ export class TripsService {
                 driverProfile.id,
                 activeVehicle.id,
                 activeVehicle.vehicle_type_id, // Use the correct field name
-                'accepted', // Driver-initiated trips start as accepted
+                'in_progress', // Driver-initiated trips start as in_progress
                 createTripDto.pickup_address,
                 createTripDto.pickup_latitude,
                 createTripDto.pickup_longitude,
@@ -213,7 +215,7 @@ export class TripsService {
                 createTripDto.dropoff_longitude, // For ST_Point
                 createTripDto.dropoff_latitude,  // For ST_Point
                 Math.round((createTripDto.estimated_fare || 0) * 100), // Convert to cents
-                'accepted', // Driver-initiated pickups start as accepted
+                'in_progress', // Driver-initiated pickups start as in_progress
                 createTripDto.notes || null
             ];
 
