@@ -215,7 +215,7 @@ export class TripsService {
                 createTripDto.dropoff_longitude, // For ST_Point
                 createTripDto.dropoff_latitude,  // For ST_Point
                 Math.round((createTripDto.estimated_fare || 0) * 100), // Convert to cents
-                'in_progress', // Driver-initiated pickups start as in_progress
+                'created', // Driver-initiated pickups start as created
                 createTripDto.notes || null
             ];
 
@@ -307,31 +307,30 @@ export class TripsService {
                 throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
             }
 
-            // Update trip status
+            // For driver-initiated trips, the trip is already in_progress, just update timestamps
             const tripQuery = `
         UPDATE trips 
-        SET status = 'in_progress', 
-            started_at = NOW(),
+        SET started_at = NOW(),
             trip_started_at = NOW(),
             updated_at = NOW()
-        WHERE id = $1 AND driver_id = $2 AND status = 'accepted'
+        WHERE id = $1 AND driver_id = $2 AND status = 'in_progress'
         RETURNING *
       `;
 
             const tripResult = await client.query(tripQuery, [tripId, driverProfile.id]);
 
             if (tripResult.rows.length === 0) {
-                throw new HttpException('Trip not found or not in accepted status', HttpStatus.NOT_FOUND);
+                throw new HttpException('Trip not found or not in progress status', HttpStatus.NOT_FOUND);
             }
 
             const trip = tripResult.rows[0];
 
-            // Update driver pickup status
+            // Update driver pickup status from 'created' to 'accepted' for driver-initiated trips
             const pickupQuery = `
         UPDATE driver_pickups 
-        SET status = 'completed',
-            completed_at = NOW()
-        WHERE driver_id = $1 AND status = 'accepted'
+        SET status = 'accepted',
+            updated_at = NOW()
+        WHERE driver_id = $1 AND status = 'created'
         RETURNING *
       `;
 
@@ -490,7 +489,7 @@ export class TripsService {
         SET status = 'completed',
             final_fare_cents = $2,
             completed_at = NOW()
-        WHERE driver_id = $1 AND status = 'accepted'
+        WHERE driver_id = $1 AND status IN ('created', 'accepted')
         RETURNING *
       `;
 
