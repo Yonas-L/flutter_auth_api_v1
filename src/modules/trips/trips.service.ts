@@ -108,6 +108,10 @@ export class TripsService {
             // Generate trip reference
             const tripReference = `TRP-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
+            // Calculate estimated duration if not provided
+            const estimatedDurationMinutes = createTripDto.estimated_duration_minutes ||
+                this.calculateEstimatedDuration(createTripDto.estimated_distance_km || 0);
+
             // Create trip record
             const tripQuery = `
         INSERT INTO trips (
@@ -156,7 +160,7 @@ export class TripsService {
                 createTripDto.dropoff_longitude, // For ST_Point
                 createTripDto.dropoff_latitude,  // For ST_Point
                 createTripDto.estimated_distance_km,
-                createTripDto.estimated_duration_minutes,
+                estimatedDurationMinutes,
                 Math.round((createTripDto.estimated_fare || 0) * 100), // Convert to cents
                 createTripDto.trip_type || 'standard',
                 createTripDto.passenger_count || 1,
@@ -871,6 +875,20 @@ export class TripsService {
         } finally {
             client.release();
         }
+    }
+
+    /**
+     * Calculate estimated duration based on distance
+     */
+    private calculateEstimatedDuration(distanceKm: number): number {
+        // Estimate duration based on distance
+        // Assuming average speed of 30 km/h in city traffic
+        const averageSpeedKmh = 30;
+        const durationHours = distanceKm / averageSpeedKmh;
+        const durationMinutes = Math.round(durationHours * 60);
+
+        // Minimum 5 minutes, maximum 120 minutes
+        return Math.max(5, Math.min(durationMinutes, 120));
     }
 
     /**
