@@ -198,4 +198,78 @@ export class TripsController {
             );
         }
     }
+
+    @Put(':id/complete')
+    async completeTrip(
+        @CurrentUser() user: User,
+        @Param('id') tripId: string,
+        @Body() completeData: {
+            final_fare?: number;
+            actual_distance_km?: number;
+            actual_duration_minutes?: number;
+            driver_earnings?: number;
+            commission?: number;
+        },
+    ) {
+        try {
+            // Validate that tripId is a valid UUID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(tripId)) {
+                throw new HttpException('Invalid trip ID format', HttpStatus.BAD_REQUEST);
+            }
+
+            const trip = await this.tripsService.completeTrip(user.id, tripId, completeData);
+
+            return {
+                success: true,
+                trip,
+                message: 'Trip completed successfully',
+            };
+        } catch (error) {
+            if (error instanceof HttpException) {
+                throw error;
+            }
+
+            this.logger.error(`Error completing trip ${tripId} for user ${user.id}:`, error);
+            throw new HttpException(
+                'Failed to complete trip',
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    @Put(':id/cancel')
+    async cancelTrip(
+        @CurrentUser() user: User,
+        @Param('id') tripId: string,
+        @Body() cancelData: {
+            reason?: string;
+        },
+    ) {
+        try {
+            // Validate that tripId is a valid UUID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+            if (!uuidRegex.test(tripId)) {
+                throw new HttpException('Invalid trip ID format', HttpStatus.BAD_REQUEST);
+            }
+
+            const trip = await this.tripsService.cancelTrip(user.id, tripId, cancelData);
+
+            return {
+                success: true,
+                trip,
+                message: 'Trip canceled successfully',
+            };
+        } catch (error) {
+            if (error instanceof HttpException) {
+                throw error;
+            }
+
+            this.logger.error(`Error canceling trip ${tripId} for user ${user.id}:`, error);
+            throw new HttpException(
+                'Failed to cancel trip',
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
 }

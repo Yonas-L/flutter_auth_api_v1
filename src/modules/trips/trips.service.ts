@@ -425,6 +425,19 @@ export class TripsService {
                 throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
             }
 
+            // Calculate final fare if not provided
+            let finalFare = completeData.final_fare;
+            if (!finalFare) {
+                finalFare = await this.calculateFare(
+                    completeData.actual_distance_km || 0,
+                    completeData.actual_duration_minutes || 0
+                );
+            }
+
+            // Calculate earnings and commission
+            const driverEarnings = completeData.driver_earnings || (finalFare * 0.85); // 85% to driver
+            const commission = completeData.commission || (finalFare * 0.15); // 15% platform fee
+
             // Update trip status
             const tripQuery = `
         UPDATE trips 
@@ -444,11 +457,11 @@ export class TripsService {
             const tripResult = await client.query(tripQuery, [
                 tripId,
                 driverProfile.id,
-                Math.round((completeData.final_fare || 0) * 100),
+                Math.round(finalFare * 100),
                 completeData.actual_distance_km,
                 completeData.actual_duration_minutes,
-                Math.round((completeData.driver_earnings || 0) * 100),
-                Math.round((completeData.commission || 0) * 100)
+                Math.round(driverEarnings * 100),
+                Math.round(commission * 100)
             ]);
 
             if (tripResult.rows.length === 0) {
@@ -456,6 +469,12 @@ export class TripsService {
             }
 
             const trip = tripResult.rows[0];
+
+            // Update driver profile statistics
+            await this.updateDriverStats(driverProfile.id, finalFare, driverEarnings);
+
+            // Update driver status to available
+            await this.updateDriverStatus(driverProfile.id, true, false);
 
             // Update driver pickup status
             const pickupQuery = `
@@ -848,6 +867,77 @@ export class TripsService {
             };
         } catch (error) {
             this.logger.error(`Error fetching trip statistics:`, error);
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * Calculate fare based on distance and duration
+     */
+    private async calculateFare(distanceKm: number, durationMinutes: number): Promise<number> {
+        // Default rates (can be fetched from vehicle_types table later)
+        const baseFare = 50.0; // 50 ETB base fare
+        const ratePerKm = 15.0; // 15 ETB per km
+        const ratePerMinute = 2.0; // 2 ETB per minute
+
+        const calculatedFare = baseFare + (distanceKm * ratePerKm) + (durationMinutes * ratePerMinute);
+
+        // Apply minimum fare
+        const minimumFare = 100.0; // 100 ETB minimum
+
+        return calculatedFare > minimumFare ? calculatedFare : minimumFare;
+    }
+
+    /**
+     * Update driver statistics after trip completion
+     */
+    private async updateDriverStats(driverId: string, finalFare: number, driverEarnings: number): Promise<void> {
+        const client = await this.postgresService.getClient();
+
+        try {
+            const updateQuery = `
+                UPDATE driver_profiles 
+                SET 
+                    total_trips = total_trips + 1,
+                    total_earnings_cents = total_earnings_cents + $2,
+                    current_trip_id = NULL,
+                    updated_at = NOW()
+                WHERE id = $1
+            `;
+
+            await client.query(updateQuery, [
+                driverId,
+                Math.round(driverEarnings * 100)
+            ]);
+        } catch (error) {
+            this.logger.error(`Error updating driver stats for ${driverId}:`, error);
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * Update driver status (online/offline/available)
+     */
+    private async updateDriverStatus(driverId: string, isOnline: boolean, isAvailable: boolean): Promise<void> {
+        const client = await this.postgresService.getClient();
+
+        try {
+            const updateQuery = `
+                UPDATE driver_profiles 
+                SET 
+                    is_online = $2,
+                    is_available = $3,
+                    updated_at = NOW()
+                WHERE id = $1
+            `;
+
+            await client.query(updateQuery, [driverId, isOnline, isAvailable]);
+        } catch (error) {
+            this.logger.error(`Error updating driver status for ${driverId}:`, error);
             throw error;
         } finally {
             client.release();
