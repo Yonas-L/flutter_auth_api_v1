@@ -421,6 +421,9 @@ export class TripsService {
         const client = await this.postgresService.getClient();
 
         try {
+            this.logger.log(`🚀 Starting trip completion for driver: ${driverUserId}, trip: ${tripId}`);
+            this.logger.log(`📊 Complete data: ${JSON.stringify(completeData, null, 2)}`);
+
             await client.query('BEGIN');
 
             // Verify driver owns this trip
@@ -428,6 +431,8 @@ export class TripsService {
             if (!driverProfile) {
                 throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
             }
+
+            this.logger.log(`👤 Driver profile found: ${driverProfile.id}, current_trip_id: ${driverProfile.current_trip_id}`);
 
             // Calculate final fare if not provided
             let finalFare = completeData.final_fare;
@@ -441,6 +446,8 @@ export class TripsService {
             // Calculate earnings and commission
             const driverEarnings = completeData.driver_earnings || (finalFare * 0.85); // 85% to driver
             const commission = completeData.commission || (finalFare * 0.15); // 15% platform fee
+
+            this.logger.log(`💰 Final fare: ${finalFare}, Driver earnings: ${driverEarnings}, Commission: ${commission}`);
 
             // Update trip status
             const tripQuery = `
@@ -473,12 +480,7 @@ export class TripsService {
             }
 
             const trip = tripResult.rows[0];
-
-            // Update driver profile statistics
-            await this.updateDriverStats(driverProfile.id, finalFare, driverEarnings);
-
-            // Update driver status to available
-            await this.updateDriverStatus(driverProfile.id, true, false);
+            this.logger.log(`✅ Trip updated to completed: ${trip.id}, status: ${trip.status}`);
 
             // Update driver pickup status
             const pickupQuery = `
@@ -496,16 +498,22 @@ export class TripsService {
             ]);
 
             // Update driver profile to clear current trip and update stats
+            this.logger.log(`🔄 Updating driver profile: ${driverProfile.id}`);
+            this.logger.log(`📈 Current stats - total_trips: ${driverProfile.total_trips}, total_earnings_cents: ${driverProfile.total_earnings_cents}`);
+
             await this.driverProfilesRepository.update(driverProfile.id, {
                 current_trip_id: null,
                 is_available: true,
+                is_online: false,
                 total_trips: driverProfile.total_trips + 1,
-                total_earnings_cents: driverProfile.total_earnings_cents + Math.round((completeData.driver_earnings || 0) * 100)
+                total_earnings_cents: driverProfile.total_earnings_cents + Math.round(driverEarnings * 100)
             });
+
+            this.logger.log(`✅ Driver profile updated successfully`);
 
             await client.query('COMMIT');
 
-            this.logger.log(`Trip completed: ${tripId}`);
+            this.logger.log(`🎉 Trip completed successfully: ${tripId}`);
             return trip;
 
         } catch (error) {
@@ -908,57 +916,5 @@ export class TripsService {
         return calculatedFare > minimumFare ? calculatedFare : minimumFare;
     }
 
-    /**
-     * Update driver statistics after trip completion
-     */
-    private async updateDriverStats(driverId: string, finalFare: number, driverEarnings: number): Promise<void> {
-        const client = await this.postgresService.getClient();
 
-        try {
-            const updateQuery = `
-                UPDATE driver_profiles 
-                SET 
-                    total_trips = total_trips + 1,
-                    total_earnings_cents = total_earnings_cents + $2,
-                    current_trip_id = NULL,
-                    updated_at = NOW()
-                WHERE id = $1
-            `;
-
-            await client.query(updateQuery, [
-                driverId,
-                Math.round(driverEarnings * 100)
-            ]);
-        } catch (error) {
-            this.logger.error(`Error updating driver stats for ${driverId}:`, error);
-            throw error;
-        } finally {
-            client.release();
-        }
-    }
-
-    /**
-     * Update driver status (online/offline/available)
-     */
-    private async updateDriverStatus(driverId: string, isOnline: boolean, isAvailable: boolean): Promise<void> {
-        const client = await this.postgresService.getClient();
-
-        try {
-            const updateQuery = `
-                UPDATE driver_profiles 
-                SET 
-                    is_online = $2,
-                    is_available = $3,
-                    updated_at = NOW()
-                WHERE id = $1
-            `;
-
-            await client.query(updateQuery, [driverId, isOnline, isAvailable]);
-        } catch (error) {
-            this.logger.error(`Error updating driver status for ${driverId}:`, error);
-            throw error;
-        } finally {
-            client.release();
-        }
-    }
 }
