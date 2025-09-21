@@ -105,6 +105,16 @@ export class TripsService {
                 this.logger.log(`Created anonymous passenger user: ${passengerId}`);
             }
 
+            // Check if passenger has a profile to determine if they're new
+            let passengerProfileId = null;
+            if (passengerId) {
+                const passengerProfileQuery = 'SELECT id FROM passenger_profiles WHERE user_id = $1';
+                const passengerProfileResult = await client.query(passengerProfileQuery, [passengerId]);
+                if (passengerProfileResult.rows.length > 0) {
+                    passengerProfileId = passengerProfileResult.rows[0].id;
+                }
+            }
+
             // Generate trip reference
             const tripReference = `TRP-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
@@ -116,6 +126,7 @@ export class TripsService {
             const tripQuery = `
         INSERT INTO trips (
           passenger_id,
+          passenger_profile_id,
           driver_id,
           vehicle_id,
           vehicle_type_id,
@@ -138,15 +149,21 @@ export class TripsService {
           request_timestamp,
           trip_reference,
           started_at,
-          trip_started_at
+          trip_started_at,
+          is_new_passenger
         ) VALUES (
-          $1, $2, $3, $4, $5, $6, $7, $8, ST_Point($9, $10)::point,
-          $11, $12, $13, ST_Point($14, $15)::point, $16, $17, $18, $19, $20, $21, $22, $23, $24, NOW(), NOW()
+          $1, $2, $3, $4, $5, $6, $7, $8, $9, ST_Point($10, $11)::point,
+          $12, $13, $14, ST_Point($15, $16)::point, $17, $18, $19, $20, $21, $22, $23, $24, $25, NOW(), NOW(), $26
         ) RETURNING *
       `;
 
+            // Determine if passenger is new (no passenger profile exists)
+            const isNewPassenger = !passengerProfileId;
+            this.logger.log(`👤 Passenger profile ID: ${passengerProfileId}, is_new_passenger: ${isNewPassenger}`);
+
             const tripValues = [
                 passengerId, // Now guaranteed to have a valid passenger ID
+                passengerProfileId, // Passenger profile ID (null if new user)
                 driverProfile.id,
                 activeVehicle.id,
                 activeVehicle.vehicle_type_id, // Use the correct field name
@@ -169,7 +186,8 @@ export class TripsService {
                 createTripDto.payment_method || 'cash',
                 'pending',
                 new Date(),
-                tripReference
+                tripReference,
+                isNewPassenger
             ];
 
             this.logger.log('Creating trip record...');
@@ -461,6 +479,7 @@ export class TripsService {
             actual_duration_minutes = $5,
             driver_earnings_cents = $6,
             commission_cents = $7,
+            payment_status = 'completed',
             updated_at = NOW()
         WHERE id = $1 AND driver_id = $2 AND status = 'in_progress'
         RETURNING *
