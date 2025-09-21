@@ -502,12 +502,25 @@ export class TripsService {
             this.logger.log(`🔄 Updating driver profile: ${driverProfile.id}`);
             this.logger.log(`📈 Current stats - total_trips: ${driverProfile.total_trips}, total_earnings_cents: ${driverProfile.total_earnings_cents}`);
 
+            // Calculate new earnings with safety check to prevent BigInt overflow
+            const newEarningsCents = Math.round(driverEarnings * 100);
+            const newTotalEarnings = driverProfile.total_earnings_cents + newEarningsCents;
+
+            // Safety check to prevent BigInt overflow (max safe value for PostgreSQL bigint)
+            const MAX_SAFE_BIGINT = 9223372036854775807; // 2^63 - 1
+            const finalTotalEarnings = newTotalEarnings > MAX_SAFE_BIGINT ? MAX_SAFE_BIGINT : newTotalEarnings;
+
+            this.logger.log(`💰 Adding earnings: ${newEarningsCents} cents, new total: ${newTotalEarnings}`);
+            if (finalTotalEarnings !== newTotalEarnings) {
+                this.logger.warn(`⚠️ BigInt overflow prevented! Capped at maximum safe value: ${finalTotalEarnings}`);
+            }
+
             await this.driverProfilesRepository.update(driverProfile.id, {
                 current_trip_id: null,
                 is_available: true,
                 is_online: false,
                 total_trips: driverProfile.total_trips + 1,
-                total_earnings_cents: driverProfile.total_earnings_cents + Math.round(driverEarnings * 100)
+                total_earnings_cents: finalTotalEarnings
             });
 
             this.logger.log(`✅ Driver profile updated successfully`);

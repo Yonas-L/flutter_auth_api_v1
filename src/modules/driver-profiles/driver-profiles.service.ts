@@ -316,12 +316,21 @@ export class DriverProfilesService {
         throw new NotFoundException('Driver profile not found');
       }
 
+      // Calculate new earnings with safety check to prevent BigInt overflow
+      const newTotalEarnings = profile.total_earnings_cents + tripEarningsCents;
+      const MAX_SAFE_BIGINT = 9223372036854775807; // 2^63 - 1
+      const finalTotalEarnings = newTotalEarnings > MAX_SAFE_BIGINT ? MAX_SAFE_BIGINT : newTotalEarnings;
+
+      if (finalTotalEarnings !== newTotalEarnings) {
+        this.logger.warn(`⚠️ BigInt overflow prevented for user ${userId}! Capped at maximum safe value: ${finalTotalEarnings}`);
+      }
+
       await this.driverProfilesRepository.update(profile.id, {
         total_trips: profile.total_trips + 1,
-        total_earnings_cents: profile.total_earnings_cents + tripEarningsCents,
+        total_earnings_cents: finalTotalEarnings,
       });
 
-      this.logger.log(`✅ Trip stats updated for user ${userId}: trips=${profile.total_trips + 1}, earnings=${profile.total_earnings_cents + tripEarningsCents}`);
+      this.logger.log(`✅ Trip stats updated for user ${userId}: trips=${profile.total_trips + 1}, earnings=${finalTotalEarnings}`);
     } catch (error) {
       this.logger.error(`Error updating trip stats for user ${userId}:`, error);
       throw error;
