@@ -523,15 +523,25 @@ export class TripsService {
 
             // Calculate new earnings with safety check to prevent BigInt overflow
             const newEarningsCents = Math.round(driverEarnings * 100);
-            const newTotalEarnings = driverProfile.total_earnings_cents + newEarningsCents;
 
-            // Safety check to prevent BigInt overflow (max safe value for PostgreSQL bigint)
-            const MAX_SAFE_BIGINT = 9223372036854775807; // 2^63 - 1
-            const finalTotalEarnings = newTotalEarnings > MAX_SAFE_BIGINT ? MAX_SAFE_BIGINT : newTotalEarnings;
+            // Use a more conservative maximum value for PostgreSQL bigint
+            // PostgreSQL bigint range: -9223372036854775808 to 9223372036854775807
+            // Use a much smaller maximum to avoid any edge cases
+            const MAX_SAFE_EARNINGS = 9000000000000000000; // 9 * 10^18 (much smaller than max bigint)
 
-            this.logger.log(`💰 Adding earnings: ${newEarningsCents} cents, new total: ${newTotalEarnings}`);
-            if (finalTotalEarnings !== newTotalEarnings) {
-                this.logger.warn(`⚠️ BigInt overflow prevented! Capped at maximum safe value: ${finalTotalEarnings}`);
+            let finalTotalEarnings;
+            if (driverProfile.total_earnings_cents >= MAX_SAFE_EARNINGS) {
+                // If already at maximum, don't add more earnings
+                finalTotalEarnings = driverProfile.total_earnings_cents;
+                this.logger.warn(`⚠️ Driver earnings already at maximum (${MAX_SAFE_EARNINGS}), not adding more`);
+            } else {
+                const newTotalEarnings = driverProfile.total_earnings_cents + newEarningsCents;
+                finalTotalEarnings = newTotalEarnings > MAX_SAFE_EARNINGS ? MAX_SAFE_EARNINGS : newTotalEarnings;
+
+                this.logger.log(`💰 Adding earnings: ${newEarningsCents} cents, new total: ${finalTotalEarnings}`);
+                if (finalTotalEarnings !== newTotalEarnings) {
+                    this.logger.warn(`⚠️ BigInt overflow prevented! Capped at maximum safe value: ${finalTotalEarnings}`);
+                }
             }
 
             await this.driverProfilesRepository.update(driverProfile.id, {

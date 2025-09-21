@@ -317,12 +317,20 @@ export class DriverProfilesService {
       }
 
       // Calculate new earnings with safety check to prevent BigInt overflow
-      const newTotalEarnings = profile.total_earnings_cents + tripEarningsCents;
-      const MAX_SAFE_BIGINT = 9223372036854775807; // 2^63 - 1
-      const finalTotalEarnings = newTotalEarnings > MAX_SAFE_BIGINT ? MAX_SAFE_BIGINT : newTotalEarnings;
+      const MAX_SAFE_EARNINGS = 9000000000000000000; // 9 * 10^18 (much smaller than max bigint)
 
-      if (finalTotalEarnings !== newTotalEarnings) {
-        this.logger.warn(`⚠️ BigInt overflow prevented for user ${userId}! Capped at maximum safe value: ${finalTotalEarnings}`);
+      let finalTotalEarnings;
+      if (profile.total_earnings_cents >= MAX_SAFE_EARNINGS) {
+        // If already at maximum, don't add more earnings
+        finalTotalEarnings = profile.total_earnings_cents;
+        this.logger.warn(`⚠️ Driver earnings already at maximum (${MAX_SAFE_EARNINGS}), not adding more for user ${userId}`);
+      } else {
+        const newTotalEarnings = profile.total_earnings_cents + tripEarningsCents;
+        finalTotalEarnings = newTotalEarnings > MAX_SAFE_EARNINGS ? MAX_SAFE_EARNINGS : newTotalEarnings;
+
+        if (finalTotalEarnings !== newTotalEarnings) {
+          this.logger.warn(`⚠️ BigInt overflow prevented for user ${userId}! Capped at maximum safe value: ${finalTotalEarnings}`);
+        }
       }
 
       await this.driverProfilesRepository.update(profile.id, {
