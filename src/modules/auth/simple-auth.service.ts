@@ -89,17 +89,21 @@ export class SimpleAuthService {
                 return 'Home';
             } else if (userStatus === 'pending_verification') {
                 // Check if user has complete registration (profile + vehicle + documents)
+                // Also check for rejected documents that need re-upload
                 const registrationQuery = `
                     SELECT 
                         dp.id as driver_profile_id,
+                        dp.verification_status as driver_verification_status,
                         v.id as vehicle_id,
-                        COUNT(d.id) as document_count
+                        COUNT(d.id) as document_count,
+                        COUNT(CASE WHEN d.verification_status = 'rejected' THEN 1 END) as rejected_documents_count,
+                        COUNT(CASE WHEN d.verification_status = 'pending_review' THEN 1 END) as pending_documents_count
                     FROM users u
                     LEFT JOIN driver_profiles dp ON u.id = dp.user_id
                     LEFT JOIN vehicles v ON dp.id = v.driver_id
-                    LEFT JOIN documents d ON u.id = d.user_id
+                    LEFT JOIN documents d ON u.id = d.user_id AND d.doc_type IN ('driver_license', 'vehicle_registration', 'insurance')
                     WHERE u.id = $1
-                    GROUP BY dp.id, v.id
+                    GROUP BY dp.id, dp.verification_status, v.id
                 `;
 
                 const regResult = await this.postgresService.query(registrationQuery, [userId]);
@@ -107,8 +111,11 @@ export class SimpleAuthService {
                 const hasProfile = !!row.driver_profile_id;
                 const hasVehicle = !!row.vehicle_id;
                 const hasDocuments = parseInt(row.document_count) > 0;
+                const rejectedDocuments = parseInt(row.rejected_documents_count) > 0;
+                const pendingDocuments = parseInt(row.pending_documents_count) > 0;
+                const driverVerificationStatus = row.driver_verification_status;
 
-                this.logger.log(`📊 Registration status - Profile: ${hasProfile}, Vehicle: ${hasVehicle}, Documents: ${hasDocuments}`);
+                this.logger.log(`📊 Registration status - Profile: ${hasProfile}, Vehicle: ${hasVehicle}, Documents: ${hasDocuments}, Rejected: ${rejectedDocuments}, Pending: ${pendingDocuments}, Driver Status: ${driverVerificationStatus}`);
 
                 // If no driver profile, user needs to start registration
                 if (!hasProfile) {
@@ -120,6 +127,18 @@ export class SimpleAuthService {
                 if (!hasVehicle || !hasDocuments) {
                     this.logger.log(`📝 Incomplete registration for user: ${userId}, redirecting to register-1`);
                     return 'register-1';
+                }
+
+                // Check for rejected documents - redirect to document re-upload
+                if (rejectedDocuments || driverVerificationStatus === 'rejected') {
+                    this.logger.log(`❌ User ${userId} has rejected documents or driver status is rejected, redirecting to register-3 for re-upload`);
+                    return 'register-3';
+                }
+
+                // Check for pending documents - also redirect to document re-upload
+                if (pendingDocuments || driverVerificationStatus === 'pending_review') {
+                    this.logger.log(`⏳ User ${userId} has pending documents or driver status is pending_review, redirecting to register-3 for re-upload`);
+                    return 'register-3';
                 }
 
                 // Profile is complete and user is pending verification
@@ -135,14 +154,17 @@ export class SimpleAuthService {
                 const registrationQuery = `
                     SELECT 
                         dp.id as driver_profile_id,
+                        dp.verification_status as driver_verification_status,
                         v.id as vehicle_id,
-                        COUNT(d.id) as document_count
+                        COUNT(d.id) as document_count,
+                        COUNT(CASE WHEN d.verification_status = 'rejected' THEN 1 END) as rejected_documents_count,
+                        COUNT(CASE WHEN d.verification_status = 'pending_review' THEN 1 END) as pending_documents_count
                     FROM users u
                     LEFT JOIN driver_profiles dp ON u.id = dp.user_id
                     LEFT JOIN vehicles v ON dp.id = v.driver_id
-                    LEFT JOIN documents d ON u.id = d.user_id
+                    LEFT JOIN documents d ON u.id = d.user_id AND d.doc_type IN ('driver_license', 'vehicle_registration', 'insurance')
                     WHERE u.id = $1
-                    GROUP BY dp.id, v.id
+                    GROUP BY dp.id, dp.verification_status, v.id
                 `;
 
                 const regResult = await this.postgresService.query(registrationQuery, [userId]);
@@ -150,10 +172,21 @@ export class SimpleAuthService {
                 const hasProfile = !!row.driver_profile_id;
                 const hasVehicle = !!row.vehicle_id;
                 const hasDocuments = parseInt(row.document_count) > 0;
+                const rejectedDocuments = parseInt(row.rejected_documents_count) > 0;
+                const pendingDocuments = parseInt(row.pending_documents_count) > 0;
+                const driverVerificationStatus = row.driver_verification_status;
+
+                this.logger.log(`📊 Unknown status registration check - Profile: ${hasProfile}, Vehicle: ${hasVehicle}, Documents: ${hasDocuments}, Rejected: ${rejectedDocuments}, Pending: ${pendingDocuments}, Driver Status: ${driverVerificationStatus}`);
 
                 if (!hasProfile || !hasVehicle || !hasDocuments) {
                     this.logger.log(`📝 Incomplete registration for user: ${userId}, redirecting to register-1`);
                     return 'register-1';
+                } else if (rejectedDocuments || driverVerificationStatus === 'rejected') {
+                    this.logger.log(`❌ User ${userId} has rejected documents or driver status is rejected, redirecting to register-3 for re-upload`);
+                    return 'register-3';
+                } else if (pendingDocuments || driverVerificationStatus === 'pending_review') {
+                    this.logger.log(`⏳ User ${userId} has pending documents or driver status is pending_review, redirecting to register-3 for re-upload`);
+                    return 'register-3';
                 } else {
                     this.logger.log(`⏳ User ${userId} has complete profile, redirecting to pending-verification`);
                     return 'pending-verification';
