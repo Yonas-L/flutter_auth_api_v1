@@ -118,6 +118,15 @@ export class DocumentsCloudinaryController {
 
             this.logger.log(`📤 Uploading document: ${file.originalname} for user: ${userId}`);
 
+            // Determine existing document (if any) to preserve/overwrite same Cloudinary public_id
+            let existingPublicId: string | undefined;
+            try {
+                const existingDocs = await this.documentsService.findByUserIdAndType(userId, docType);
+                if (existingDocs && existingDocs.length > 0) {
+                    existingPublicId = existingDocs[0].file_path || undefined;
+                }
+            } catch (_) { /* ignore */ }
+
             // Use specialized upload method based on document type
             let uploadResult: CloudinaryUploadResult;
 
@@ -129,7 +138,8 @@ export class DocumentsCloudinaryController {
                 uploadResult = await this.cloudinaryService.uploadDocument(
                     file,
                     userId,
-                    docType
+                    docType,
+                    existingPublicId
                 );
             }
 

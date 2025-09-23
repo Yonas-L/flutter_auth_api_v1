@@ -116,6 +116,7 @@ export class DocumentsService {
                     mime_type: createDocumentDto.mime_type,
                     public_url: createDocumentDto.public_url,
                     notes: createDocumentDto.notes,
+                    verification_status: 'pending_review' as const,
                     uploaded_at: new Date().toISOString(),
                 };
 

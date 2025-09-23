@@ -272,7 +272,8 @@ export class CloudinaryService {
     async uploadDocument(
         file: Express.Multer.File,
         userId: string,
-        docType: string
+        docType: string,
+        existingPublicId?: string
     ): Promise<CloudinaryUploadResult> {
         try {
             this.logger.log(`📤 Uploading document: ${file.originalname} for user: ${userId}`);
@@ -292,11 +293,16 @@ export class CloudinaryService {
                 throw new Error(`File type ${file.mimetype} is not allowed for documents`);
             }
 
+            // If an existing public_id is provided, overwrite the same asset
+            // Otherwise, use a deterministic public_id per user+docType so future uploads can overwrite
+            const deterministicPublicId = `uploads/${userId}/documents/${docType}`;
             const uploadOptions: CloudinaryUploadOptions = {
                 folder: `uploads/${userId}/documents`,
-                public_id: `${docType}_${Date.now()}`,
+                public_id: existingPublicId || deterministicPublicId,
                 resource_type: file.mimetype.startsWith('image/') ? 'image' : 'raw',
                 quality: file.mimetype.startsWith('image/') ? 'auto' : undefined,
+                overwrite: true,
+                invalidate: true,
             };
 
             return await this.uploadFile(file, uploadOptions);
