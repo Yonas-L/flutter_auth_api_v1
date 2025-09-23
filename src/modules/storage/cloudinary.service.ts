@@ -301,8 +301,6 @@ export class CloudinaryService {
                 public_id: existingPublicId || deterministicPublicId,
                 resource_type: file.mimetype.startsWith('image/') ? 'image' : 'raw',
                 quality: file.mimetype.startsWith('image/') ? 'auto' : undefined,
-                overwrite: true,
-                invalidate: true,
             };
 
             return await this.uploadFile(file, uploadOptions);
