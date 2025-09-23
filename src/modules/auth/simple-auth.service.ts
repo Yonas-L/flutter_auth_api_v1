@@ -135,10 +135,10 @@ export class SimpleAuthService {
                     return 'register-3';
                 }
 
-                // Check for pending documents - also redirect to document re-upload
+                // Check for pending documents - redirect to pending screen (not re-upload)
                 if (pendingDocuments || driverVerificationStatus === 'pending_review') {
-                    this.logger.log(`⏳ User ${userId} has pending documents or driver status is pending_review, redirecting to register-3 for re-upload`);
-                    return 'register-3';
+                    this.logger.log(`⏳ User ${userId} has pending documents or driver status is pending_review, redirecting to pending-verification`);
+                    return 'pending-verification';
                 }
 
                 // Profile is complete and user is pending verification
@@ -185,8 +185,8 @@ export class SimpleAuthService {
                     this.logger.log(`❌ User ${userId} has rejected documents or driver status is rejected, redirecting to register-3 for re-upload`);
                     return 'register-3';
                 } else if (pendingDocuments || driverVerificationStatus === 'pending_review') {
-                    this.logger.log(`⏳ User ${userId} has pending documents or driver status is pending_review, redirecting to register-3 for re-upload`);
-                    return 'register-3';
+                    this.logger.log(`⏳ User ${userId} has pending documents or driver status is pending_review, redirecting to pending-verification`);
+                    return 'pending-verification';
                 } else {
                     this.logger.log(`⏳ User ${userId} has complete profile, redirecting to pending-verification`);
                     return 'pending-verification';
