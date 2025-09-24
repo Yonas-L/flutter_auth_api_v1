@@ -58,7 +58,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             // Handle dashboard connections without authentication
             if (isDashboardConnection && !token) {
                 this.dashboardClients.set(client.id, client);
-                this.logger.log(`Dashboard client connected: ${client.id} (Total dashboard clients: ${this.dashboardClients.size})`);
+                this.logger.log(`📊 Dashboard client connected: ${client.id} (Total dashboard clients: ${this.dashboardClients.size})`);
+                this.logger.log(`📊 Dashboard client query:`, client.handshake.query);
                 client.emit('dashboard:connected', {
                     message: 'Connected to dashboard',
                     timestamp: new Date().toISOString()
@@ -232,7 +233,9 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             });
 
             // Broadcast status change to dashboard clients
+            this.logger.log(`📡 Attempting to broadcast to ${this.dashboardClients.size} dashboard clients`);
             this.dashboardClients.forEach((dashboardClient, clientId) => {
+                this.logger.log(`📡 Broadcasting to dashboard client: ${clientId}`);
                 dashboardClient.emit('driver:status_updated', {
                     driverId: userId,
                     available,
