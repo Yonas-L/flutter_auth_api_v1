@@ -7,12 +7,16 @@ JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-this-in-production
 ACCESS_EXPIRES_IN=15m
 REFRESH_EXPIRES_IN=7d
 
+
+# Mapbox Configuration
+MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoieW9uYWEiLCJhIjoiY21hcDY0Ym9jMGNlaDJscjNyOXgzYTQ2eiJ9.sHTuJcpA_SUpjcfJdifeug
+
 # Server Configuration
 CORS_ORIGIN=http://localhost:3000
 PORT=8080
 NODE_ENV=development
 
-# Email Configuration
+# Email Configurations
 MAIL_ENABLED=true
 GMAIL_USER=yonaslegesse19@gmail.com
 GMAIL_APP_PASSWORD=tgewcbsczenjmfyl
