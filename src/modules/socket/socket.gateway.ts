@@ -31,6 +31,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly logger = new Logger(SocketGateway.name);
     private readonly connectedDrivers = new Map<string, AuthenticatedSocket>();
     private readonly availableDrivers = new Map<string, AuthenticatedSocket>();
+    private readonly dashboardClients = new Map<string, Socket>();
 
     constructor(
         private jwtService: JwtService,
@@ -56,7 +57,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
             // Handle dashboard connections without authentication
             if (isDashboardConnection && !token) {
-                this.logger.log(`Dashboard client connected: ${client.id}`);
+                this.dashboardClients.set(client.id, client);
+                this.logger.log(`Dashboard client connected: ${client.id} (Total dashboard clients: ${this.dashboardClients.size})`);
                 client.emit('dashboard:connected', {
                     message: 'Connected to dashboard',
                     timestamp: new Date().toISOString()
@@ -144,6 +146,12 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             });
 
             this.logger.log(`Driver ${authClient.userId} disconnected`);
+        } else {
+            // Check if it's a dashboard client
+            if (this.dashboardClients.has(client.id)) {
+                this.dashboardClients.delete(client.id);
+                this.logger.log(`Dashboard client disconnected: ${client.id} (Total dashboard clients: ${this.dashboardClients.size})`);
+            }
         }
     }
 
@@ -223,15 +231,17 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     'You are offline'
             });
 
-            // Broadcast status change to all connected clients (for dashboard updates)
-            this.server.emit('driver:status_updated', {
-                driverId: userId,
-                available,
-                online: isOnline,
-                timestamp: new Date().toISOString()
+            // Broadcast status change to dashboard clients
+            this.dashboardClients.forEach((dashboardClient, clientId) => {
+                dashboardClient.emit('driver:status_updated', {
+                    driverId: userId,
+                    available,
+                    online: isOnline,
+                    timestamp: new Date().toISOString()
+                });
             });
 
-            this.logger.log(`📡 Broadcasted driver status update: ${userId} - online: ${isOnline}, available: ${available}`);
+            this.logger.log(`📡 Broadcasted driver status update to ${this.dashboardClients.size} dashboard clients: ${userId} - online: ${isOnline}, available: ${available}`);
 
         } catch (error) {
             this.logger.error(`Error setting driver availability:`, error);
@@ -263,14 +273,18 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 accuracy
             });
 
-            // Broadcast location update to all connected clients (for dashboard updates)
-            this.server.emit('driver:location_updated', {
-                driverId: userId,
-                lat,
-                lng,
-                accuracy,
-                timestamp: new Date().toISOString()
+            // Broadcast location update to dashboard clients
+            this.dashboardClients.forEach((dashboardClient, clientId) => {
+                dashboardClient.emit('driver:location_updated', {
+                    driverId: userId,
+                    lat,
+                    lng,
+                    accuracy,
+                    timestamp: new Date().toISOString()
+                });
             });
+
+            this.logger.log(`📡 Broadcasted driver location update to ${this.dashboardClients.size} dashboard clients: ${userId}`);
 
         } catch (error) {
             this.logger.error(`Error updating driver location:`, error);
