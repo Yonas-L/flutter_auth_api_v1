@@ -217,6 +217,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             }
 
             // Update database with both online and available status
+            this.logger.log(`🔄 Updating database for driver ${userId}: available=${available}, online=${isOnline}`);
             await this.updateDriverStatus(userId, {
                 is_available: available,
                 is_online: isOnline,
@@ -322,9 +323,13 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             });
 
             if (updatedProfile) {
-                this.logger.log(`✅ Driver status updated successfully for ${userId}`);
+                this.logger.log(`✅ Driver status updated successfully for ${userId}:`, {
+                    is_online: updatedProfile.is_online,
+                    is_available: updatedProfile.is_available,
+                    socket_id: updatedProfile.socket_id
+                });
             } else {
-                this.logger.error(`Failed to update driver status for ${userId}`);
+                this.logger.error(`❌ Failed to update driver status for ${userId}`);
             }
 
         } catch (error) {
