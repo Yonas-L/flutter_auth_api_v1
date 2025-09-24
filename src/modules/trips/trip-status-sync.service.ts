@@ -77,7 +77,7 @@ export class TripStatusSyncService {
                 // Determine availability and online status based on trip status
                 let isAvailable = false;
                 let isOnline = true; // Driver should always be online during and after trips
-                
+
                 switch (newStatus) {
                     case 'accepted':
                     case 'in_progress':
@@ -96,7 +96,7 @@ export class TripStatusSyncService {
                         // For other statuses, maintain current state
                         break;
                 }
-                
+
                 await this.driverProfilesRepository.update(driverId, {
                     current_trip_id: newCurrentTripId,
                     is_available: isAvailable,
