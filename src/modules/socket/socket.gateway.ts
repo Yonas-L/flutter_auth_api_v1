@@ -45,8 +45,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 client.handshake.headers.authorization?.split(' ')[1];
 
             // Check if this is a dashboard connection (no token required)
-            const isDashboardConnection = client.handshake.query.dashboard === 'true' || 
-                                       client.handshake.headers['x-dashboard'] === 'true';
+            const isDashboardConnection = client.handshake.query.dashboard === 'true' ||
+                client.handshake.headers['x-dashboard'] === 'true';
 
             if (!token && !isDashboardConnection) {
                 this.logger.warn(`Connection rejected: No token provided for ${client.id}`);
