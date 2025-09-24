@@ -209,6 +209,16 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     'You are offline'
             });
 
+            // Broadcast status change to all connected clients (for dashboard updates)
+            this.server.emit('driver:status_updated', {
+                driverId: userId,
+                available,
+                online: isOnline,
+                timestamp: new Date().toISOString()
+            });
+
+            this.logger.log(`📡 Broadcasted driver status update: ${userId} - online: ${isOnline}, available: ${available}`);
+
         } catch (error) {
             this.logger.error(`Error setting driver availability:`, error);
             client.emit('error', { message: 'Failed to update availability status' });
@@ -237,6 +247,15 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             client.emit('driver:location_acknowledged', {
                 timestamp: new Date().toISOString(),
                 accuracy
+            });
+
+            // Broadcast location update to all connected clients (for dashboard updates)
+            this.server.emit('driver:location_updated', {
+                driverId: userId,
+                lat,
+                lng,
+                accuracy,
+                timestamp: new Date().toISOString()
             });
 
         } catch (error) {
