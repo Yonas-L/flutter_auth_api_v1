@@ -6,6 +6,7 @@ import { DatabaseModule } from '../database/database.module';
 import { AuthPostgresModule } from '../auth/auth-postgres.module';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { VehiclesPostgresRepository } from '../database/repositories/vehicles-postgres.repository';
+import { SocketGateway } from '../socket/socket.gateway';
 
 @Module({
     imports: [
@@ -18,6 +19,7 @@ import { VehiclesPostgresRepository } from '../database/repositories/vehicles-po
         TripStatusSyncService,
         DriverProfilesPostgresRepository,
         VehiclesPostgresRepository,
+        SocketGateway,
     ],
     exports: [TripsService],
 })

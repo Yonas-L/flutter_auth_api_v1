@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PostgresService } from '../database/postgres.service';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
+import { SocketGateway } from '../socket/socket.gateway';
 
 @Injectable()
 export class TripStatusSyncService {
@@ -9,6 +10,7 @@ export class TripStatusSyncService {
     constructor(
         private readonly postgresService: PostgresService,
         private readonly driverProfilesRepository: DriverProfilesPostgresRepository,
+        private readonly socketGateway: SocketGateway,
     ) { }
 
     /**
@@ -103,6 +105,9 @@ export class TripStatusSyncService {
                     is_online: isOnline
                 });
                 this.logger.log(`✅ Updated driver profile for driver ${driverId}: available=${isAvailable}, online=${isOnline}, trip_status=${newStatus}`);
+
+                // Send socket notification to update driver status in real-time
+                await this._notifyDriverStatusUpdate(driverId, isAvailable, isOnline, newStatus);
             }
 
         } catch (error) {
@@ -132,5 +137,63 @@ export class TripStatusSyncService {
             this.logger.error(`❌ Error updating trip status for ${tripId}:`, error);
             throw error;
         }
+    }
+
+    /**
+     * Notify driver of status update via socket
+     */
+    private async _notifyDriverStatusUpdate(
+        driverId: string,
+        isAvailable: boolean,
+        isOnline: boolean,
+        tripStatus: string
+    ): Promise<void> {
+        try {
+            // Get driver profile to find user_id
+            const driverProfile = await this.driverProfilesRepository.findById(driverId);
+            if (!driverProfile) {
+                this.logger.warn(`Driver profile not found for driver ${driverId}`);
+                return;
+            }
+
+            // Find the connected driver socket
+            const connectedDrivers = this.socketGateway['connectedDrivers'];
+            const driverSocket = connectedDrivers.get(driverProfile.user_id);
+
+            if (driverSocket) {
+                // Send availability update event
+                driverSocket.emit('driver:availability_updated', {
+                    available: isAvailable,
+                    online: isOnline,
+                    trip_status: tripStatus,
+                    message: this._getStatusMessage(isAvailable, isOnline, tripStatus)
+                });
+
+                this.logger.log(`📡 Sent driver status update to driver ${driverProfile.user_id}: available=${isAvailable}, online=${isOnline}`);
+            } else {
+                this.logger.warn(`Driver ${driverProfile.user_id} not connected to socket`);
+            }
+        } catch (error) {
+            this.logger.error(`❌ Error notifying driver status update:`, error);
+        }
+    }
+
+    /**
+     * Get appropriate status message based on driver status
+     */
+    private _getStatusMessage(isAvailable: boolean, isOnline: boolean, tripStatus: string): string {
+        if (!isOnline) {
+            return 'You are offline';
+        }
+
+        if (tripStatus === 'in_progress' || tripStatus === 'accepted') {
+            return 'You are online and on a trip';
+        }
+
+        if (isAvailable) {
+            return 'You are online and available for rides';
+        }
+
+        return 'You are online but not available';
     }
 }
