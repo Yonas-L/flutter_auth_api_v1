@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { TripsController } from './trips.controller';
 import { TripsService } from './trips.service';
 import { TripStatusSyncService } from './trip-status-sync.service';
@@ -12,6 +14,15 @@ import { SocketGateway } from '../socket/socket.gateway';
     imports: [
         DatabaseModule,
         AuthPostgresModule, // For JWT authentication
+        JwtModule.registerAsync({
+            inject: [ConfigService],
+            useFactory: (configService: ConfigService) => ({
+                secret: configService.get('JWT_ACCESS_SECRET'),
+                signOptions: {
+                    expiresIn: configService.get('ACCESS_EXPIRES_IN') || '15m',
+                },
+            }),
+        }),
     ],
     controllers: [TripsController],
     providers: [
