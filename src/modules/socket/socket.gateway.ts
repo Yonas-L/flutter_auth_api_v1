@@ -165,11 +165,14 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @SubscribeMessage('driver:set_availability')
     async handleSetAvailability(
         @ConnectedSocket() client: AuthenticatedSocket,
-        @MessageBody() data: { available: boolean; location?: { lat: number; lng: number } }
+        @MessageBody() data: { available: boolean; online?: boolean; location?: { lat: number; lng: number } }
     ) {
         try {
-            const { available, location } = data;
+            const { available, online, location } = data;
             const userId = client.userId;
+
+            // Determine online status - if not provided, assume online when available
+            const isOnline = online !== undefined ? online : available;
 
             if (available) {
                 // Add to available drivers
@@ -190,17 +193,20 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 this.logger.log(`Driver ${userId} is no longer available`);
             }
 
-            // Update database
+            // Update database with both online and available status
             await this.updateDriverStatus(userId, {
                 is_available: available,
-                is_online: true,
+                is_online: isOnline,
                 socket_id: client.id
             });
 
             // Notify driver of status change
             client.emit('driver:availability_updated', {
                 available,
-                message: available ? 'You are now available for rides' : 'You are no longer available'
+                online: isOnline,
+                message: isOnline ?
+                    (available ? 'You are now available for rides' : 'You are online but not available') :
+                    'You are offline'
             });
 
         } catch (error) {
