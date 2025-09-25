@@ -188,6 +188,8 @@ export class DriverProfilesPostgresRepository {
 
     async update(id: string, data: UpdateDriverProfileData): Promise<DriverProfile | null> {
         try {
+            this.logger.log(`🔄 DriverProfilesPostgresRepository.update called for ${id}:`, data);
+            
             const fields: string[] = [];
             const values: any[] = [];
             let paramCount = 0;
@@ -201,6 +203,7 @@ export class DriverProfilesPostgresRepository {
             });
 
             if (fields.length === 0) {
+                this.logger.log(`⚠️ No fields to update for driver profile ${id}`);
                 return this.findById(id);
             }
 
@@ -215,15 +218,30 @@ export class DriverProfilesPostgresRepository {
         RETURNING *
       `;
 
+            this.logger.log(`🔄 Executing update query:`, { query, values });
+
             const result = await this.postgresService.query(query, values);
 
+            this.logger.log(`🔄 Update query result:`, { 
+                rowCount: result.rows.length, 
+                rows: result.rows 
+            });
+
             if (result.rows.length === 0) {
+                this.logger.error(`❌ No rows updated for driver profile ${id}`);
                 return null;
             }
 
-            return this.mapRowToDriverProfile(result.rows[0]);
+            const updatedProfile = this.mapRowToDriverProfile(result.rows[0]);
+            this.logger.log(`✅ Successfully updated driver profile ${id}:`, {
+                is_online: updatedProfile.is_online,
+                is_available: updatedProfile.is_available,
+                socket_id: updatedProfile.socket_id
+            });
+
+            return updatedProfile;
         } catch (error) {
-            this.logger.error(`Error updating driver profile ${id}:`, error);
+            this.logger.error(`❌ Error updating driver profile ${id}:`, error);
             throw error;
         }
     }
