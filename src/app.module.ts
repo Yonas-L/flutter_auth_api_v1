@@ -20,6 +20,7 @@ import { StorageModule } from './modules/storage/storage.module';
 import { CloudinaryModule } from './modules/storage/cloudinary.module';
 import { TripsModule } from './modules/trips/trips.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { AdminModule } from './modules/admin/admin.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     CloudinaryModule,
     TripsModule,
     NotificationsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],
