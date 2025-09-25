@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { UsersPostgresRepository } from '../database/repositories/users-postgres.repository';
 import { MailService } from '../mail/mail.service';
+import { PostgresService } from '../database/postgres.service';
 
 @Injectable()
 export class AdminService {
     constructor(
         private readonly usersRepository: UsersPostgresRepository,
         private readonly mailService: MailService,
+        private readonly postgresService: PostgresService,
     ) { }
 
     async createUser(email: string, fullName: string, userType: 'admin' | 'customer_support') {
@@ -34,7 +36,7 @@ export class AdminService {
         expiresAt.setDate(expiresAt.getDate() + 7);
 
         await this.usersRepository.update(user.id, {
-            temp_password_expires_at: expiresAt,
+            temp_password_expires_at: expiresAt.toISOString(),
             must_change_password: true,
         });
 
@@ -81,7 +83,7 @@ export class AdminService {
         await this.usersRepository.update(user.id, {
             password_hash: newPassword, // In production, hash this
             must_change_password: false,
-            temp_password_expires_at: null,
+            temp_password_expires_at: undefined,
             status: 'verified',
         });
 
@@ -98,12 +100,12 @@ export class AdminService {
 
     private async getRoleId(roleName: string): Promise<string> {
         const query = 'SELECT id FROM roles WHERE name = $1 AND is_active = true';
-        const result = await this.usersRepository.query(query, [roleName]);
+        const result = await this.postgresService.query(query, [roleName]);
         return result.rows[0]?.id;
     }
 
     private async assignRoleToUser(userId: string, roleId: string): Promise<void> {
         const query = 'INSERT INTO user_roles (user_id, role_id, created_at) VALUES ($1, $2, NOW())';
-        await this.usersRepository.query(query, [userId, roleId]);
+        await this.postgresService.query(query, [userId, roleId]);
     }
 }

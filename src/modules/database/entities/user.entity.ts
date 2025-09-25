@@ -5,7 +5,7 @@ export interface User {
     full_name?: string; // Match actual database schema (unified schema uses full_name)
     display_name?: string; // Keep for backward compatibility
     avatar_url?: string;
-    user_type: 'passenger' | 'driver' | 'admin';
+    user_type: 'passenger' | 'driver' | 'admin' | 'customer_support';
     is_phone_verified: boolean;
     is_email_verified: boolean;
     is_active: boolean;
@@ -23,6 +23,10 @@ export interface User {
     updated_at: string;
     last_login_at?: string;
     deleted_at?: string;
+    // Admin/User Management Fields
+    password_hash?: string;
+    temp_password_expires_at?: string;
+    must_change_password?: boolean;
 }
 
 export interface CreateUserData {
@@ -46,6 +50,10 @@ export interface CreateUserData {
     emergency_contact_phone?: string;
     date_of_birth?: string;
     gender?: User['gender'];
+    // Admin/User Management Fields
+    password_hash?: string;
+    temp_password_expires_at?: string;
+    must_change_password?: boolean;
 }
 
 export interface UpdateUserData {
@@ -69,4 +77,8 @@ export interface UpdateUserData {
     emergency_contact_phone?: string;
     date_of_birth?: string;
     gender?: User['gender'];
+    // Admin/User Management Fields
+    password_hash?: string;
+    temp_password_expires_at?: string;
+    must_change_password?: boolean;
 }

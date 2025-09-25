@@ -1,6 +1,6 @@
 import { Controller, Post, Body, Get, Query, UseGuards } from '@nestjs/common';
 import { AdminService } from './admin.service';
-import { JwtPostgresAuthGuard } from '../auth/jwt-auth.guard';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('admin')
@@ -8,7 +8,7 @@ export class AdminController {
     constructor(private readonly adminService: AdminService) { }
 
     @Post('users')
-    @UseGuards(JwtPostgresAuthGuard)
+    @UseGuards(JwtAuthGuard)
     async createUser(
         @CurrentUser() user: any,
         @Body() createUserDto: { email: string; full_name: string; user_type: 'admin' | 'customer_support' },
@@ -37,7 +37,7 @@ export class AdminController {
     }
 
     @Get('users')
-    @UseGuards(JwtPostgresAuthGuard)
+    @UseGuards(JwtAuthGuard)
     async getUsers(
         @CurrentUser() user: any,
         @Query('page') page: string = '1',

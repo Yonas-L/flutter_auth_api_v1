@@ -90,4 +90,61 @@ export class MailService {
       console.log(`🔐 [Fallback] OTP for ${email}: ${otp}`);
     }
   }
+
+  async sendUserCreationEmail(
+    email: string,
+    fullName: string,
+    tempPassword: string,
+    userType: 'admin' | 'customer_support',
+  ): Promise<void> {
+    const subject = 'Welcome to Arada Transport - Your Account Details';
+    const text = `Hello ${fullName},\n\nYour ${userType} account has been created.\n\nTemporary Password: ${tempPassword}\n\nPlease log in and change your password immediately.\n\nBest regards,\nArada Transport Team`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2>Welcome to Arada Transport</h2>
+        <p>Hello ${fullName},</p>
+        <p>Your ${userType} account has been created successfully.</p>
+        <div style="background-color: #f5f5f5; padding: 15px; border-radius: 5px; margin: 20px 0;">
+          <p><strong>Temporary Password:</strong> ${tempPassword}</p>
+        </div>
+        <p><strong>Important:</strong> Please log in and change your password immediately for security reasons.</p>
+        <p>Best regards,<br>Arada Transport Team</p>
+      </div>
+    `;
+
+    if (!this.mailEnabled) {
+      console.log(`📧 User creation email for ${email}:`);
+      console.log(`   Name: ${fullName}`);
+      console.log(`   Type: ${userType}`);
+      console.log(`   Temp Password: ${tempPassword}`);
+      const info = await this.transporter.sendMail({
+        from: this.fromAddress,
+        to: email,
+        subject,
+        text,
+        html,
+      });
+      if ((info as any).message) {
+        console.log('✉️ Dev email (streamed):\n' + (info as any).message.toString());
+      }
+      return;
+    }
+
+    try {
+      const info = await this.transporter.sendMail({
+        from: this.fromAddress,
+        to: email,
+        subject,
+        text,
+        html,
+      });
+      console.log(`✅ User creation email sent to ${email}. MessageId: ${info.messageId}`);
+    } catch (err) {
+      console.error('❌ Failed to send user creation email:', err?.response || err?.message || err);
+      console.log(`📧 [Fallback] User creation details for ${email}:`);
+      console.log(`   Name: ${fullName}`);
+      console.log(`   Type: ${userType}`);
+      console.log(`   Temp Password: ${tempPassword}`);
+    }
+  }
 }
