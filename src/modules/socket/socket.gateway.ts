@@ -306,14 +306,16 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         socket_id?: string | null;
     }) {
         try {
-            this.logger.log(`Driver status update for ${userId}:`, updates);
+            this.logger.log(`🔄 Driver status update for ${userId}:`, updates);
 
             // Find driver profile by user ID
             const driverProfile = await this.driverProfilesRepository.findByUserId(userId);
             if (!driverProfile) {
-                this.logger.error(`Driver profile not found for user ${userId}`);
+                this.logger.error(`❌ Driver profile not found for user ${userId}`);
                 return;
             }
+
+            this.logger.log(`📋 Found driver profile ${driverProfile.id} for user ${userId}`);
 
             // Update driver profile with new status
             const updatedProfile = await this.driverProfilesRepository.update(driverProfile.id, {
@@ -329,11 +331,11 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     socket_id: updatedProfile.socket_id
                 });
             } else {
-                this.logger.error(`❌ Failed to update driver status for ${userId}`);
+                this.logger.error(`❌ Failed to update driver status for ${userId} - update returned null`);
             }
 
         } catch (error) {
-            this.logger.error(`Error updating driver status:`, error);
+            this.logger.error(`❌ Error updating driver status for ${userId}:`, error);
         }
     }
 
