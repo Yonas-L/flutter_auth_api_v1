@@ -239,7 +239,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 this.logger.log(`📡 Broadcasting to dashboard client: ${clientId}`);
 
                 // Emit detailed driver status event
-                dashboardClient.emit('driver:status_updated', {
+                dashboardClient.emit('driver:status_changed', {
                     driverId: userId,
                     userId: userId, // Add userId for consistency
                     available,
@@ -248,7 +248,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 });
 
                 // Emit specific availability event
-                dashboardClient.emit('driver:availability_updated', {
+                dashboardClient.emit('driver:availability_changed', {
                     driverId: userId,
                     userId: userId,
                     available,
@@ -291,8 +291,9 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
             // Broadcast location update to dashboard clients
             this.dashboardClients.forEach((dashboardClient, clientId) => {
-                dashboardClient.emit('driver:location_updated', {
+                dashboardClient.emit('driver:location_changed', {
                     driverId: userId,
+                    userId: userId,
                     lat,
                     lng,
                     accuracy,
