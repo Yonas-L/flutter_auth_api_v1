@@ -189,7 +189,7 @@ export class DriverProfilesPostgresRepository {
     async update(id: string, data: UpdateDriverProfileData): Promise<DriverProfile | null> {
         try {
             this.logger.log(`🔄 DriverProfilesPostgresRepository.update called for ${id}:`, data);
-            
+
             const fields: string[] = [];
             const values: any[] = [];
             let paramCount = 0;
@@ -222,9 +222,9 @@ export class DriverProfilesPostgresRepository {
 
             const result = await this.postgresService.query(query, values);
 
-            this.logger.log(`🔄 Update query result:`, { 
-                rowCount: result.rows.length, 
-                rows: result.rows 
+            this.logger.log(`🔄 Update query result:`, {
+                rowCount: result.rows.length,
+                rows: result.rows
             });
 
             if (result.rows.length === 0) {

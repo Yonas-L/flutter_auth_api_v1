@@ -237,8 +237,20 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             this.logger.log(`📡 Attempting to broadcast to ${this.dashboardClients.size} dashboard clients`);
             this.dashboardClients.forEach((dashboardClient, clientId) => {
                 this.logger.log(`📡 Broadcasting to dashboard client: ${clientId}`);
+                
+                // Emit detailed driver status event
                 dashboardClient.emit('driver:status_updated', {
                     driverId: userId,
+                    userId: userId, // Add userId for consistency
+                    available,
+                    online: isOnline,
+                    timestamp: new Date().toISOString()
+                });
+
+                // Emit specific availability event
+                dashboardClient.emit('driver:availability_updated', {
+                    driverId: userId,
+                    userId: userId,
                     available,
                     online: isOnline,
                     timestamp: new Date().toISOString()
@@ -299,6 +311,28 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     // ==========================================
     // Database Update Methods
     // ==========================================
+
+    // Broadcast trip status changes to dashboard clients
+    async broadcastTripStatusChange(tripId: string, driverId: string, status: string) {
+        try {
+            this.logger.log(`📡 Broadcasting trip status change: ${tripId} - ${status} for driver ${driverId}`);
+            
+            this.dashboardClients.forEach((dashboardClient, clientId) => {
+                this.logger.log(`📡 Broadcasting trip status to dashboard client: ${clientId}`);
+                
+                dashboardClient.emit('trip:status_changed', {
+                    tripId,
+                    driverId,
+                    status,
+                    timestamp: new Date().toISOString()
+                });
+            });
+
+            this.logger.log(`📡 Broadcasted trip status change to ${this.dashboardClients.size} dashboard clients`);
+        } catch (error) {
+            this.logger.error(`❌ Error broadcasting trip status change:`, error);
+        }
+    }
 
     private async updateDriverStatus(userId: string, updates: {
         is_online?: boolean;

@@ -108,6 +108,9 @@ export class TripStatusSyncService {
 
                 // Send socket notification to update driver status in real-time
                 await this._notifyDriverStatusUpdate(driverId, isAvailable, isOnline, newStatus);
+
+                // Broadcast trip status change to dashboard clients
+                await this.socketGateway.broadcastTripStatusChange(tripId, driverId, newStatus);
             }
 
         } catch (error) {
