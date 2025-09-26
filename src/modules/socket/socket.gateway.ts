@@ -360,16 +360,23 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 socket_id: driverProfile.socket_id
             });
 
-            // Update driver profile with new status
+            // Enforce invariant: available only when online AND no current_trip_id
+            const nextOnline = updates.is_online !== undefined ? updates.is_online : driverProfile.is_online;
+            let nextAvailable = updates.is_available !== undefined ? updates.is_available : driverProfile.is_available;
+            if (!nextOnline || driverProfile.current_trip_id) {
+                nextAvailable = false;
+            }
+
+            // Update driver profile with coerced status
             this.logger.log(`🔄 Attempting to update driver profile with:`, {
-                is_online: updates.is_online,
-                is_available: updates.is_available,
+                is_online: nextOnline,
+                is_available: nextAvailable,
                 socket_id: updates.socket_id || undefined,
             });
 
             const updatedProfile = await this.driverProfilesRepository.update(driverProfile.id, {
-                is_online: updates.is_online,
-                is_available: updates.is_available,
+                is_online: nextOnline,
+                is_available: nextAvailable,
                 socket_id: updates.socket_id || undefined,
             });
 
