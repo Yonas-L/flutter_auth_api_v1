@@ -104,7 +104,13 @@ export class TripStatusSyncService {
                 this.logger.log(`✅ Updated driver profile for driver ${driverId}: available=${isAvailable}, trip_status=${newStatus}`);
 
                 // Send socket notification to update driver status in real-time
-                await this._notifyDriverStatusUpdate(driverId, isAvailable, isOnline, newStatus);
+                // Keep current online state (controlled by driver's toggle)
+                await this._notifyDriverStatusUpdate(
+                    driverId,
+                    isAvailable,
+                    driverProfile.is_online === true,
+                    newStatus,
+                );
 
                 // Broadcast trip status change to dashboard clients
                 await this.socketGateway.broadcastTripStatusChange(tripId, driverId, newStatus);
