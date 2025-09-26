@@ -109,9 +109,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             // Join driver room
             await client.join(`driver:${userId}`);
 
-            // Update driver status to online
+            // Register socket id only; do NOT change online state on mere connection
             await this.updateDriverStatus(userId, {
-                is_online: true,
                 socket_id: client.id
             });
 
