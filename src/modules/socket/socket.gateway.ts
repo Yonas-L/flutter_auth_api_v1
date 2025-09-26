@@ -194,8 +194,9 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             const { available, online, location } = data;
             const userId = client.userId;
 
-            // Determine online status - if not provided, assume online when available
-            const isOnline = online !== undefined ? online : available;
+            // Determine online status strictly from explicit flag.
+            // If 'online' is not provided, do NOT change online state here.
+            const isOnline: boolean | undefined = online !== undefined ? online : undefined;
 
             if (available) {
                 // Add to available drivers
@@ -216,13 +217,15 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 this.logger.log(`Driver ${userId} is no longer available`);
             }
 
-            // Update database with both online and available status
-            this.logger.log(`🔄 Updating database for driver ${userId}: available=${available}, online=${isOnline}`);
-            await this.updateDriverStatus(userId, {
-                is_available: available,
-                is_online: isOnline,
-                socket_id: client.id
-            });
+            // Update database, but only touch is_online when explicitly provided
+            this.logger.log(`🔄 Updating database for driver ${userId}: available=${available}${isOnline !== undefined ? ", online=" + isOnline : ''}`);
+            await this.updateDriverStatus(userId, Object.assign(
+                {
+                    is_available: available,
+                    socket_id: client.id,
+                },
+                isOnline !== undefined ? { is_online: isOnline } : {}
+            ));
 
             // Notify driver of status change
             client.emit('driver:availability_updated', {

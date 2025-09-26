@@ -76,23 +76,21 @@ export class TripStatusSyncService {
 
             // Update driver profile if needed
             if (shouldUpdate) {
-                // Determine availability and online status based on trip status
+                // Determine availability based on trip status only.
+                // DO NOT force online here; online is controlled by driver's toggle.
                 let isAvailable = false;
-                let isOnline = true; // Driver should always be online during and after trips
 
                 switch (newStatus) {
                     case 'accepted':
                     case 'in_progress':
-                        // During trip: online but not available for new trips
+                        // During trip: not available for new trips
                         isAvailable = false;
-                        isOnline = true;
                         break;
                     case 'completed':
                     case 'canceled':
                     case 'no_show':
-                        // Trip ended: online and available for new trips
+                        // Trip ended: available for new trips
                         isAvailable = true;
-                        isOnline = true;
                         break;
                     default:
                         // For other statuses, maintain current state
@@ -102,9 +100,8 @@ export class TripStatusSyncService {
                 await this.driverProfilesRepository.update(driverId, {
                     current_trip_id: newCurrentTripId,
                     is_available: isAvailable,
-                    is_online: isOnline
                 });
-                this.logger.log(`✅ Updated driver profile for driver ${driverId}: available=${isAvailable}, online=${isOnline}, trip_status=${newStatus}`);
+                this.logger.log(`✅ Updated driver profile for driver ${driverId}: available=${isAvailable}, trip_status=${newStatus}`);
 
                 // Send socket notification to update driver status in real-time
                 await this._notifyDriverStatusUpdate(driverId, isAvailable, isOnline, newStatus);
