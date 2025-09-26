@@ -218,7 +218,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
             // Update database, but only touch is_online when explicitly provided
             this.logger.log(`🔄 Updating database for driver ${userId}: available=${available}${isOnline !== undefined ? ", online=" + isOnline : ''}`);
-            await this.updateDriverStatus(userId, Object.assign(
+            const updated = await this.updateDriverStatus(userId, Object.assign(
                 {
                     is_available: available,
                     socket_id: client.id,
@@ -226,12 +226,14 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 isOnline !== undefined ? { is_online: isOnline } : {}
             ));
 
-            // Notify driver of status change
+            // Notify driver of status change (use persisted values if available)
+            const onlineToEmit = updated?.is_online ?? (isOnline ?? false);
+            const availableToEmit = updated?.is_available ?? available;
             client.emit('driver:availability_updated', {
-                available,
-                online: isOnline,
-                message: isOnline ?
-                    (available ? 'You are now available for rides' : 'You are online but not available') :
+                available: availableToEmit,
+                online: onlineToEmit,
+                message: onlineToEmit ?
+                    (availableToEmit ? 'You are now available for rides' : 'You are online but not available') :
                     'You are offline'
             });
 
@@ -244,8 +246,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 dashboardClient.emit('driver:status_changed', {
                     driverId: userId,
                     userId: userId, // Add userId for consistency
-                    available,
-                    online: isOnline,
+                    available: availableToEmit,
+                    online: onlineToEmit,
                     timestamp: new Date().toISOString()
                 });
 
@@ -253,8 +255,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 dashboardClient.emit('driver:availability_changed', {
                     driverId: userId,
                     userId: userId,
-                    available,
-                    online: isOnline,
+                    available: availableToEmit,
+                    online: onlineToEmit,
                     timestamp: new Date().toISOString()
                 });
             });
@@ -389,8 +391,11 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 this.logger.error(`❌ Failed to update driver status for ${userId} - update returned null`);
             }
 
+            return updatedProfile;
+
         } catch (error) {
             this.logger.error(`❌ Error updating driver status for ${userId}:`, error);
+            return undefined;
         }
     }
 
