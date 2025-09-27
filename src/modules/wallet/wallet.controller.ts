@@ -7,6 +7,7 @@ import {
   UseGuards,
   Request,
   ValidationPipe,
+  BadRequestException,
 } from '@nestjs/common';
 import { WalletService } from './wallet.service';
 import { DepositRequestDto, WithdrawalRequestDto, TransactionQueryDto } from './dto/wallet.dto';
