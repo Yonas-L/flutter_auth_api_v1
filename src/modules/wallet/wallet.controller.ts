@@ -69,7 +69,11 @@ export class WalletController {
   @Get('debug')
   async debugWallet(@Request() req) {
     try {
-      const userId = req.user.sub;
+      const userId = req.user.id;
+      
+      // Debug: Check what's in req.user
+      console.log('Debug - req.user:', JSON.stringify(req.user, null, 2));
+      console.log('Debug - userId from req.user.id:', userId);
       
       // Test database connection
       const userResult = await this.walletService['postgresService'].query(
@@ -93,6 +97,8 @@ export class WalletController {
       
       return {
         success: true,
+        reqUser: req.user,
+        userId: userId,
         user: userResult.rows[0] || null,
         wallet: walletResult.rows[0] || null,
         environment: envVars,
