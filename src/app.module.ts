@@ -21,6 +21,7 @@ import { CloudinaryModule } from './modules/storage/cloudinary.module';
 import { TripsModule } from './modules/trips/trips.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { WalletModule } from './modules/wallet/wallet.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AdminModule } from './modules/admin/admin.module';
     TripsModule,
     NotificationsModule,
     AdminModule,
+    WalletModule,
   ],
   controllers: [AppController],
   providers: [AppService],
