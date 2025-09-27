@@ -12,7 +12,7 @@ import { WalletService } from './wallet.service';
 import { DepositRequestDto, WithdrawalRequestDto, TransactionQueryDto } from './dto/wallet.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 
-@Controller('wallet')
+@Controller('api/wallet')
 @UseGuards(JwtAuthGuard)
 export class WalletController {
   constructor(private readonly walletService: WalletService) {}
