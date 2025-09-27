@@ -65,4 +65,46 @@ export class WalletController {
 
     return this.walletService.handlePaymentCallback(chapaTxRef, status);
   }
+
+  @Get('debug')
+  async debugWallet(@Request() req) {
+    try {
+      const userId = req.user.sub;
+      
+      // Test database connection
+      const userResult = await this.walletService['postgresService'].query(
+        'SELECT id, phone_number, full_name FROM users WHERE id = $1',
+        [userId]
+      );
+      
+      // Test wallet account
+      const walletResult = await this.walletService['postgresService'].query(
+        'SELECT * FROM wallet_accounts WHERE user_id = $1',
+        [userId]
+      );
+      
+      // Test environment variables
+      const envVars = {
+        CHAPA_SECRET_KEY: process.env.CHAPA_SECRET_KEY ? 'SET' : 'NOT SET',
+        CHAPA_PUBLIC_KEY: process.env.CHAPA_PUBLIC_KEY ? 'SET' : 'NOT SET',
+        BASE_API_URL: process.env.BASE_API_URL || 'NOT SET',
+        NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'NOT SET',
+      };
+      
+      return {
+        success: true,
+        user: userResult.rows[0] || null,
+        wallet: walletResult.rows[0] || null,
+        environment: envVars,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  }
 }
