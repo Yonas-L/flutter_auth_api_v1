@@ -15,7 +15,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 @Controller('api/wallet')
 @UseGuards(JwtAuthGuard)
 export class WalletController {
-  constructor(private readonly walletService: WalletService) {}
+  constructor(private readonly walletService: WalletService) { }
 
   @Get('balance')
   async getBalance(@Request() req) {
@@ -51,14 +51,17 @@ export class WalletController {
     return this.walletService.getUserWithdrawalRequests(req.user.id);
   }
 
-  // Webhook endpoint for Chapa payment callbacks (would be protected differently in production)
+  // Webhook endpoint for Chapa payment callbacks
   @Post('deposit/callback')
-  async handlePaymentCallback(
-    @Body() callbackData: { chapa_tx_ref: string; status: 'success' | 'failed' },
-  ) {
-    return this.walletService.handlePaymentCallback(
-      callbackData.chapa_tx_ref,
-      callbackData.status,
-    );
+  async handlePaymentCallback(@Body() callbackData: any) {
+    // Chapa webhook sends different data structure
+    const chapaTxRef = callbackData.tx_ref || callbackData.chapa_tx_ref;
+    const status = callbackData.status === 'success' ? 'success' : 'failed';
+
+    if (!chapaTxRef) {
+      throw new BadRequestException('Missing transaction reference');
+    }
+
+    return this.walletService.handlePaymentCallback(chapaTxRef, status);
   }
 }

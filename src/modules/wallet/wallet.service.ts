@@ -1,11 +1,17 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
 import { PostgresService } from '../database/postgres.service';
 import { DepositRequestDto, WithdrawalRequestDto, TransactionQueryDto } from './dto/wallet.dto';
+import { ChapaService, ChapaPaymentRequest } from './chapa.service';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class WalletService {
-  constructor(private readonly postgresService: PostgresService) {}
+  private readonly logger = new Logger(WalletService.name);
+
+  constructor(
+    private readonly postgresService: PostgresService,
+    private readonly chapaService: ChapaService,
+  ) { }
 
   async getWalletBalance(userId: string) {
     try {
@@ -22,7 +28,7 @@ export class WalletService {
            VALUES ($1, $2, $3, $4, NOW(), NOW())`,
           [uuidv4(), userId, 0, 'ETB']
         );
-        
+
         walletResult = await this.postgresService.query(
           'SELECT * FROM wallet_accounts WHERE user_id = $1',
           [userId]
@@ -30,7 +36,7 @@ export class WalletService {
       }
 
       const wallet = walletResult.rows[0];
-      
+
       return {
         wallet_id: wallet.id,
         balance_cents: wallet.balance_cents,
@@ -80,7 +86,7 @@ export class WalletService {
       // Get total count
       let countQuery = 'SELECT COUNT(*) FROM wallet_transactions WHERE wallet_id = $1';
       const countParams = [walletId];
-      
+
       if (type) {
         countQuery += ' AND type = $2';
         countParams.push(type);
@@ -109,15 +115,33 @@ export class WalletService {
   }
 
   async initiateDeposit(userId: string, depositData: DepositRequestDto) {
-    return this.postgresService.transaction(async (client) => {
+    try {
+      this.logger.log(`Initiating deposit for user ${userId}, amount: ${depositData.amount}`);
+
+      // Get user information for Chapa payment
+      const userResult = await this.postgresService.query(
+        'SELECT full_name, email, phone_number FROM users WHERE id = $1',
+        [userId]
+      );
+
+      if (userResult.rows.length === 0) {
+        throw new NotFoundException('User not found');
+      }
+
+      const user = userResult.rows[0];
+      const [firstName, ...lastNameParts] = (user.full_name || 'User').split(' ');
+      const lastName = lastNameParts.join(' ') || '';
+
       // Get or create wallet
       const wallet = await this.getWalletBalance(userId);
-      
+
+      // Generate unique transaction reference
+      const chapaTransactionRef = this.chapaService.generateTransactionRef('ARADA_DEP');
+
       // Create transaction record
       const transactionId = uuidv4();
-      const chapaTransactionRef = `CHAPA_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      await client.query(
+
+      await this.postgresService.query(
         `INSERT INTO wallet_transactions (
           id, wallet_id, type, amount_cents, balance_after_cents,
           description, chapa_tx_ref, chapa_status, payment_method,
@@ -136,17 +160,41 @@ export class WalletService {
         ]
       );
 
-      // In a real implementation, integrate with Chapa API here
-      const chapaCheckoutUrl = `https://api.chapa.co/v1/checkout/${chapaTransactionRef}`;
+      // Prepare Chapa payment request
+      const chapaPaymentData: ChapaPaymentRequest = {
+        amount: depositData.amount.toString(),
+        currency: 'ETB',
+        email: user.email || `${userId}@arada-transport.local`,
+        first_name: firstName,
+        last_name: lastName,
+        phone_number: user.phone_number || '251900000000',
+        tx_ref: chapaTransactionRef,
+        callback_url: `${process.env.BASE_API_URL || 'https://flutter-auth-api-v1.onrender.com'}/api/wallet/deposit/callback`,
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/wallet?status=success`,
+        customization: {
+          title: 'Arada Transport Wallet Deposit',
+          description: `Deposit ${depositData.amount} ETB to your wallet`,
+        },
+      };
+
+      // Initialize payment with Chapa
+      const chapaResponse = await this.chapaService.initializePayment(chapaPaymentData);
+
+      this.logger.log(`Chapa payment initialized successfully: ${chapaResponse.data.checkout_url}`);
 
       return {
         transaction_id: transactionId,
         chapa_tx_ref: chapaTransactionRef,
-        chapa_checkout_url: chapaCheckoutUrl,
+        chapa_checkout_url: chapaResponse.data.checkout_url,
         amount_cents: Math.round(depositData.amount * 100),
         amount: depositData.amount,
+        status: 'pending',
+        message: 'Payment initialized successfully. Please complete payment on the next page.',
       };
-    });
+    } catch (error) {
+      this.logger.error(`Failed to initiate deposit: ${error.message}`);
+      throw error;
+    }
   }
 
   async submitWithdrawalRequest(userId: string, withdrawalData: WithdrawalRequestDto) {
@@ -205,51 +253,89 @@ export class WalletService {
     }
   }
 
-  // Simulate payment callback (in real implementation, this would be called by Chapa webhook)
+  // Handle payment callback from Chapa webhook
   async handlePaymentCallback(chapaTransactionRef: string, status: 'success' | 'failed') {
-    return this.postgresService.transaction(async (client) => {
-      // Find transaction
-      const txResult = await client.query(
-        'SELECT * FROM wallet_transactions WHERE chapa_tx_ref = $1',
-        [chapaTransactionRef]
-      );
+    try {
+      this.logger.log(`Processing payment callback for tx_ref: ${chapaTransactionRef}, status: ${status}`);
 
-      if (txResult.rows.length === 0) {
-        throw new NotFoundException('Transaction not found');
-      }
-
-      const transaction = txResult.rows[0];
-
-      if (status === 'success') {
-        // Update wallet balance
-        await client.query(
-          'UPDATE wallet_accounts SET balance_cents = balance_cents + $1, updated_at = NOW() WHERE id = $2',
-          [transaction.amount_cents, transaction.wallet_id]
+      return this.postgresService.transaction(async (client) => {
+        // Find transaction with wallet info
+        const txResult = await client.query(
+          `SELECT wt.*, wa.user_id, wa.balance_cents as current_balance
+           FROM wallet_transactions wt
+           JOIN wallet_accounts wa ON wt.wallet_id = wa.id
+           WHERE wt.chapa_tx_ref = $1 AND wt.type = 'deposit'`,
+          [chapaTransactionRef]
         );
 
-        // Get new balance
-        const balanceResult = await client.query(
-          'SELECT balance_cents FROM wallet_accounts WHERE id = $1',
-          [transaction.wallet_id]
-        );
-        const newBalance = balanceResult.rows[0].balance_cents;
+        if (txResult.rows.length === 0) {
+          this.logger.error(`Transaction not found for tx_ref: ${chapaTransactionRef}`);
+          throw new NotFoundException('Transaction not found');
+        }
 
-        // Update transaction
-        await client.query(
-          `UPDATE wallet_transactions 
-           SET chapa_status = $1, balance_after_cents = $2, processed_at = NOW() 
-           WHERE id = $3`,
-          ['success', newBalance, transaction.id]
-        );
-      } else {
-        // Mark transaction as failed
-        await client.query(
-          'UPDATE wallet_transactions SET chapa_status = $1, processed_at = NOW() WHERE id = $2',
-          ['failed', transaction.id]
-        );
-      }
+        const transaction = txResult.rows[0];
 
-      return { success: true };
-    });
+        // If already processed, don't process again
+        if (transaction.chapa_status === 'success' || transaction.chapa_status === 'failed') {
+          this.logger.log(`Transaction ${chapaTransactionRef} already processed with status: ${transaction.chapa_status}`);
+          return {
+            message: 'Transaction already processed',
+            chapa_tx_ref: chapaTransactionRef,
+            status: transaction.chapa_status
+          };
+        }
+
+        // Verify payment with Chapa API for additional security
+        try {
+          const chapaVerification = await this.chapaService.verifyPayment(chapaTransactionRef);
+          this.logger.log(`Chapa verification result: ${JSON.stringify(chapaVerification.data)}`);
+
+          // Use Chapa's verification status if available
+          if (chapaVerification.data && chapaVerification.data.status) {
+            status = chapaVerification.data.status === 'success' ? 'success' : 'failed';
+          }
+        } catch (error) {
+          this.logger.error(`Failed to verify payment with Chapa: ${error.message}`);
+          // Continue with webhook status if verification fails
+        }
+
+        if (status === 'success') {
+          // Update wallet balance
+          const newBalance = transaction.current_balance + transaction.amount_cents;
+
+          await client.query(
+            'UPDATE wallet_accounts SET balance_cents = $1, updated_at = NOW() WHERE id = $2',
+            [newBalance, transaction.wallet_id]
+          );
+
+          // Update transaction
+          await client.query(
+            `UPDATE wallet_transactions 
+             SET chapa_status = $1, balance_after_cents = $2, processed_at = NOW(), updated_at = NOW()
+             WHERE id = $3`,
+            ['success', newBalance, transaction.id]
+          );
+
+          this.logger.log(`Wallet balance updated for user ${transaction.user_id}. New balance: ${newBalance} cents`);
+        } else {
+          // Mark transaction as failed
+          await client.query(
+            'UPDATE wallet_transactions SET chapa_status = $1, processed_at = NOW(), updated_at = NOW() WHERE id = $2',
+            ['failed', transaction.id]
+          );
+        }
+
+        return {
+          success: true,
+          message: 'Payment callback processed successfully',
+          chapa_tx_ref: chapaTransactionRef,
+          status: status,
+          wallet_updated: status === 'success'
+        };
+      });
+    } catch (error) {
+      this.logger.error(`Failed to process payment callback: ${error.message}`);
+      throw error;
+    }
   }
 }

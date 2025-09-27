@@ -7,6 +7,12 @@ JWT_REFRESH_SECRET=your-super-secret-refresh-key-change-this-in-production
 ACCESS_EXPIRES_IN=15m
 REFRESH_EXPIRES_IN=7d
 
+# Chapa Payment Integration
+CHAPA_SECRET_KEY=CHASECK_TEST-A8qVMz4xV3IPZQqB727zZUXZfOazuT9F
+CHAPA_PUBLIC_KEY=CHAPUBK_TEST-Zsl1ztwt2CPePyv7kXaitjebFbNMktJN
+CHAPA_ENCRYPTION_KEY=M3d2z1JozAb05MFJgMgSM8tE
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
 
 # Mapbox Configuration
 MAPBOX_ACCESS_TOKEN=pk.eyJ1IjoieW9uYWEiLCJhIjoiY21hcDY0Ym9jMGNlaDJscjNyOXgzYTQ2eiJ9.sHTuJcpA_SUpjcfJdifeug
