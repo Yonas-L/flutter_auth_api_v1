@@ -98,7 +98,13 @@ export class ChapaService {
 
             if (error.response?.data) {
                 this.logger.error(`Chapa API Error: ${JSON.stringify(error.response.data)}`);
-                throw new BadRequestException(`Payment initialization failed: ${error.response.data.message || 'Unknown error'}`);
+                const errorMessage = error.response.data.message || error.response.data.error || 'Unknown error';
+                throw new BadRequestException(`Payment initialization failed: ${errorMessage}`);
+            }
+
+            if (error.message) {
+                this.logger.error(`Chapa Error Details: ${error.message}`);
+                throw new BadRequestException(`Payment initialization failed: ${error.message}`);
             }
 
             throw new BadRequestException('Payment initialization failed. Please try again.');
