@@ -161,4 +161,72 @@ export class WalletController {
       };
     }
   }
+
+  @Post('debug-chapa')
+  async debugChapa(@Request() req, @Body() depositData: any) {
+    try {
+      const userId = req.user.id;
+      console.log('Debug Chapa - userId:', userId);
+      console.log('Debug Chapa - depositData:', depositData);
+      
+      // Get user data
+      const userResult = await this.walletService['postgresService'].query(
+        'SELECT full_name, email, phone_number FROM users WHERE id = $1',
+        [userId]
+      );
+      
+      if (userResult.rows.length === 0) {
+        throw new Error('User not found');
+      }
+      
+      const user = userResult.rows[0];
+      const [firstName, ...lastNameParts] = (user.full_name || 'User').split(' ');
+      const lastName = lastNameParts.join(' ') || '';
+      
+      // Test Chapa service initialization
+      const chapaService = this.walletService['chapaService'];
+      const chapaTransactionRef = chapaService.generateTransactionRef('ARADA_DEP');
+      
+      // Prepare Chapa payment request
+      const chapaPaymentData = {
+        amount: depositData.amount.toString(),
+        currency: 'ETB',
+        email: user.email || `${userId}@arada-transport.local`,
+        first_name: firstName,
+        last_name: lastName,
+        phone_number: user.phone_number || '251900000000',
+        tx_ref: chapaTransactionRef,
+        callback_url: `${process.env.BASE_API_URL || 'https://flutter-auth-api-v1.onrender.com'}/api/wallet/deposit/callback`,
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/wallet?status=success`,
+        customization: {
+          title: 'Arada Transport Wallet Deposit',
+          description: `Deposit ${depositData.amount} ETB to your wallet`,
+        },
+      };
+      
+      console.log('Debug Chapa - payment data:', chapaPaymentData);
+      
+      // Try to initialize payment with Chapa
+      const chapaResponse = await chapaService.initializePayment(chapaPaymentData);
+      console.log('Debug Chapa - response:', chapaResponse);
+      
+      return {
+        success: true,
+        userId: userId,
+        user: user,
+        chapaTransactionRef: chapaTransactionRef,
+        chapaPaymentData: chapaPaymentData,
+        chapaResponse: chapaResponse,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      console.error('Debug Chapa Error:', error);
+      return {
+        success: false,
+        error: error.message,
+        stack: error.stack,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  }
 }
