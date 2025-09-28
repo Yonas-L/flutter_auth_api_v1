@@ -70,23 +70,23 @@ export class WalletController {
   async debugWallet(@Request() req) {
     try {
       const userId = req.user.id;
-      
+
       // Debug: Check what's in req.user
       console.log('Debug - req.user:', JSON.stringify(req.user, null, 2));
       console.log('Debug - userId from req.user.id:', userId);
-      
+
       // Test database connection
       const userResult = await this.walletService['postgresService'].query(
         'SELECT id, phone_number, full_name FROM users WHERE id = $1',
         [userId]
       );
-      
+
       // Test wallet account
       const walletResult = await this.walletService['postgresService'].query(
         'SELECT * FROM wallet_accounts WHERE user_id = $1',
         [userId]
       );
-      
+
       // Test environment variables
       const envVars = {
         CHAPA_SECRET_KEY: process.env.CHAPA_SECRET_KEY ? 'SET' : 'NOT SET',
@@ -94,7 +94,7 @@ export class WalletController {
         BASE_API_URL: process.env.BASE_API_URL || 'NOT SET',
         NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'NOT SET',
       };
-      
+
       return {
         success: true,
         reqUser: req.user,
