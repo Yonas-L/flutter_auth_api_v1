@@ -342,22 +342,22 @@ export class WalletService {
   private formatPhoneNumberForChapa(phoneNumber: string): string {
     // Remove any non-digit characters
     const digits = phoneNumber.replace(/\D/g, '');
-    
+
     // If it starts with 251 (Ethiopia country code), remove it
     if (digits.startsWith('251') && digits.length === 13) {
       return digits.substring(3); // Remove 251 prefix
     }
-    
+
     // If it's already 10 digits, return as is
     if (digits.length === 10) {
       return digits;
     }
-    
+
     // If it's 9 digits, add leading 0
     if (digits.length === 9) {
       return '0' + digits;
     }
-    
+
     // Default fallback
     return '0912345678';
   }
@@ -367,7 +367,7 @@ export class WalletService {
     if (email && email.length <= 50 && email.includes('@')) {
       return email;
     }
-    
+
     // Create a short email using first 8 characters of userId
     const shortId = userId.substring(0, 8);
     return `${shortId}@arada.et`;
