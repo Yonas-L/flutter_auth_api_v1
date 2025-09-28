@@ -164,7 +164,7 @@ export class WalletService {
       const chapaPaymentData: ChapaPaymentRequest = {
         amount: depositData.amount.toString(),
         currency: 'ETB',
-        email: user.email || `${userId}@arada-transport.local`,
+        email: this.formatEmailForChapa(user.email, userId),
         first_name: firstName,
         last_name: lastName,
         phone_number: this.formatPhoneNumberForChapa(user.phone_number || '0912345678'),
@@ -172,8 +172,8 @@ export class WalletService {
         callback_url: `${process.env.BASE_API_URL || 'https://flutter-auth-api-v1.onrender.com'}/api/wallet/deposit/callback`,
         return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/wallet?status=success`,
         customization: {
-          title: 'Arada Transport Wallet Deposit',
-          description: `Deposit ${depositData.amount} ETB to your wallet`,
+          title: 'Arada Deposit',
+          description: `Deposit ${depositData.amount} ETB`,
         },
       };
 
@@ -360,5 +360,16 @@ export class WalletService {
     
     // Default fallback
     return '0912345678';
+  }
+
+  private formatEmailForChapa(email: string | null, userId: string): string {
+    // If user has a valid email and it's under 50 characters, use it
+    if (email && email.length <= 50 && email.includes('@')) {
+      return email;
+    }
+    
+    // Create a short email using first 8 characters of userId
+    const shortId = userId.substring(0, 8);
+    return `${shortId}@arada.et`;
   }
 }
