@@ -70,23 +70,23 @@ export class WalletController {
   async debugWallet(@Request() req) {
     try {
       const userId = req.user.id;
-      
+
       // Debug: Check what's in req.user
       console.log('Debug - req.user:', JSON.stringify(req.user, null, 2));
       console.log('Debug - userId from req.user.id:', userId);
-      
+
       // Test database connection
       const userResult = await this.walletService['postgresService'].query(
         'SELECT id, phone_number, full_name FROM users WHERE id = $1',
         [userId]
       );
-      
+
       // Test wallet account
       const walletResult = await this.walletService['postgresService'].query(
         'SELECT * FROM wallet_accounts WHERE user_id = $1',
         [userId]
       );
-      
+
       // Test environment variables
       const envVars = {
         CHAPA_SECRET_KEY: process.env.CHAPA_SECRET_KEY ? 'SET' : 'NOT SET',
@@ -94,7 +94,7 @@ export class WalletController {
         BASE_API_URL: process.env.BASE_API_URL || 'NOT SET',
         NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || 'NOT SET',
       };
-      
+
       return {
         success: true,
         reqUser: req.user,
@@ -120,29 +120,29 @@ export class WalletController {
       const userId = req.user.id;
       console.log('Debug Deposit - userId:', userId);
       console.log('Debug Deposit - depositData:', depositData);
-      
+
       // Test the actual deposit process step by step
       const userResult = await this.walletService['postgresService'].query(
         'SELECT full_name, email, phone_number FROM users WHERE id = $1',
         [userId]
       );
-      
+
       if (userResult.rows.length === 0) {
         throw new Error('User not found');
       }
-      
+
       const user = userResult.rows[0];
       console.log('Debug Deposit - user data:', user);
-      
+
       // Test wallet balance
       const wallet = await this.walletService.getWalletBalance(userId);
       console.log('Debug Deposit - wallet data:', wallet);
-      
+
       // Test Chapa service initialization
       const chapaService = this.walletService['chapaService'];
       const chapaTransactionRef = chapaService.generateTransactionRef('ARADA_DEP');
       console.log('Debug Deposit - chapaTransactionRef:', chapaTransactionRef);
-      
+
       return {
         success: true,
         userId: userId,
@@ -168,25 +168,25 @@ export class WalletController {
       const userId = req.user.id;
       console.log('Debug Chapa - userId:', userId);
       console.log('Debug Chapa - depositData:', depositData);
-      
+
       // Get user data
       const userResult = await this.walletService['postgresService'].query(
         'SELECT full_name, email, phone_number FROM users WHERE id = $1',
         [userId]
       );
-      
+
       if (userResult.rows.length === 0) {
         throw new Error('User not found');
       }
-      
+
       const user = userResult.rows[0];
       const [firstName, ...lastNameParts] = (user.full_name || 'User').split(' ');
       const lastName = lastNameParts.join(' ') || '';
-      
+
       // Test Chapa service initialization
       const chapaService = this.walletService['chapaService'];
       const chapaTransactionRef = chapaService.generateTransactionRef('ARADA_DEP');
-      
+
       // Prepare Chapa payment request
       const chapaPaymentData = {
         amount: depositData.amount.toString(),
@@ -203,13 +203,13 @@ export class WalletController {
           description: `Deposit ${depositData.amount} ETB to your wallet`,
         },
       };
-      
+
       console.log('Debug Chapa - payment data:', chapaPaymentData);
-      
+
       // Try to initialize payment with Chapa
       const chapaResponse = await chapaService.initializePayment(chapaPaymentData);
       console.log('Debug Chapa - response:', chapaResponse);
-      
+
       return {
         success: true,
         userId: userId,

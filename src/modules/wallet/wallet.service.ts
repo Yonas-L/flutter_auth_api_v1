@@ -167,7 +167,7 @@ export class WalletService {
         email: user.email || `${userId}@arada-transport.local`,
         first_name: firstName,
         last_name: lastName,
-        phone_number: user.phone_number || '251900000000',
+        phone_number: this.formatPhoneNumberForChapa(user.phone_number || '0912345678'),
         tx_ref: chapaTransactionRef,
         callback_url: `${process.env.BASE_API_URL || 'https://flutter-auth-api-v1.onrender.com'}/api/wallet/deposit/callback`,
         return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/wallet?status=success`,
@@ -337,5 +337,28 @@ export class WalletService {
       this.logger.error(`Failed to process payment callback: ${error.message}`);
       throw error;
     }
+  }
+
+  private formatPhoneNumberForChapa(phoneNumber: string): string {
+    // Remove any non-digit characters
+    const digits = phoneNumber.replace(/\D/g, '');
+    
+    // If it starts with 251 (Ethiopia country code), remove it
+    if (digits.startsWith('251') && digits.length === 13) {
+      return digits.substring(3); // Remove 251 prefix
+    }
+    
+    // If it's already 10 digits, return as is
+    if (digits.length === 10) {
+      return digits;
+    }
+    
+    // If it's 9 digits, add leading 0
+    if (digits.length === 9) {
+      return '0' + digits;
+    }
+    
+    // Default fallback
+    return '0912345678';
   }
 }
