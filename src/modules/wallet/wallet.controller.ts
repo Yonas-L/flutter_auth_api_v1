@@ -8,7 +8,9 @@ import {
   Request,
   ValidationPipe,
   BadRequestException,
+  Headers,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { WalletService } from './wallet.service';
 import { DepositRequestDto, WithdrawalRequestDto, TransactionQueryDto } from './dto/wallet.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -64,6 +66,45 @@ export class WalletController {
     }
 
     return this.walletService.handlePaymentCallback(chapaTxRef, status);
+  }
+
+  // Verified webhook endpoint (no auth guard on Chapa webhooks)
+  @UseGuards()
+  @Post('webhook')
+  async handleWebhook(
+    @Body() payload: any,
+    @Headers('chapa-signature') chapaSignatureA: string,
+    @Headers('x-chapa-signature') chapaSignatureB: string,
+  ) {
+    const secretKey = process.env.CHAPA_SECRET_KEY || '';
+    const webhookSecret = process.env.CHAPA_WEBHOOK_SECRET || '';
+    if (!secretKey) {
+      throw new BadRequestException('Chapa secret key not configured');
+    }
+
+    const payloadString = JSON.stringify(payload);
+    const expectedSigB = crypto
+      .createHmac('sha256', secretKey)
+      .update(payloadString)
+      .digest('hex');
+    const expectedSigA = webhookSecret
+      ? crypto.createHmac('sha256', webhookSecret).update(webhookSecret).digest('hex')
+      : '';
+
+    const sigBValid = !!chapaSignatureB && chapaSignatureB === expectedSigB;
+    const sigAValid = !!webhookSecret && !!chapaSignatureA && chapaSignatureA === expectedSigA;
+    if (!sigAValid && !sigBValid) {
+      throw new BadRequestException('Invalid webhook signature');
+    }
+
+    const txRef = payload.tx_ref || payload.trx_ref || payload.reference || payload.chapa_tx_ref;
+    const status = payload.status === 'success' || payload.event === 'charge.success' ? 'success' : 'failed';
+    if (!txRef) {
+      throw new BadRequestException('Missing tx_ref in webhook payload');
+    }
+
+    const result = await this.walletService.handlePaymentCallback(txRef, status);
+    return { ok: true, result };
   }
 
   @Get('debug')
