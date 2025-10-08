@@ -1,5 +1,4 @@
 import { Controller, Get, Post } from '@nestjs/common';
-import { DatabaseService } from './database.service';
 import { PostgresService } from './postgres.service';
 import { MigrationService } from './migration.service';
 import { TestPostgresRepositoriesService } from './test-postgres-repositories.service';
@@ -7,7 +6,6 @@ import { TestPostgresRepositoriesService } from './test-postgres-repositories.se
 @Controller('health')
 export class DatabaseController {
     constructor(
-        private readonly databaseService: DatabaseService, // Legacy Supabase service
         private readonly postgresService: PostgresService, // New PostgreSQL service
         private readonly migrationService: MigrationService, // Migration service
         private readonly testRepositoriesService: TestPostgresRepositoriesService, // Test service
@@ -16,11 +14,8 @@ export class DatabaseController {
     @Get('database')
     async checkDatabaseHealth() {
         try {
-            // Check both Supabase and PostgreSQL connections
-            const [supabaseHealthy, postgresHealthy] = await Promise.all([
-                this.databaseService.healthCheck().catch(() => false),
-                this.postgresService.healthCheck().catch(() => false)
-            ]);
+            // Check PostgreSQL connection only
+            const postgresHealthy = await this.postgresService.healthCheck().catch(() => false);
 
             const migrationStatus = await this.migrationService.getMigrationStatus().catch(() => null);
 
@@ -28,7 +23,6 @@ export class DatabaseController {
                 status: postgresHealthy ? 'healthy' : 'unhealthy',
                 timestamp: new Date().toISOString(),
                 services: {
-                    supabase: supabaseHealthy ? 'healthy' : 'unhealthy',
                     postgresql: postgresHealthy ? 'healthy' : 'unhealthy',
                 },
                 migrations: migrationStatus,
@@ -39,7 +33,6 @@ export class DatabaseController {
                 status: 'error',
                 timestamp: new Date().toISOString(),
                 services: {
-                    supabase: 'error',
                     postgresql: 'error',
                 },
                 error: error.message,

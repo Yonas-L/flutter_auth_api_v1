@@ -17,17 +17,20 @@ export class DatabaseService implements OnModuleInit {
             throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured');
         }
 
-        this.supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+        this.supabaseClient = createClient(supabaseUrl as string, supabaseServiceKey as string, {
             auth: {
                 autoRefreshToken: false,
                 persistSession: false,
-            },
+            }
         });
 
         this.logger.log('✅ Supabase client initialized successfully');
 
-        // Test connection
-        await this.testConnection();
+        // Test connection asynchronously to avoid blocking startup
+        this.testConnection().catch((error) => {
+            this.logger.warn('⚠️ Supabase connection test failed during startup:', (error as any)?.message ?? error);
+            this.logger.warn('   The service will continue but Supabase-dependent operations may fail');
+        });
     }
 
     get client(): SupabaseClient {
@@ -40,7 +43,7 @@ export class DatabaseService implements OnModuleInit {
     private async testConnection(): Promise<void> {
         try {
             // Test with a simple query to the users table
-            const { data, error } = await this.supabaseClient
+            const { error } = await this.supabaseClient
                 .from('users')
                 .select('count', { count: 'exact', head: true });
 
@@ -49,7 +52,7 @@ export class DatabaseService implements OnModuleInit {
                 throw error;
             }
 
-            this.logger.log(`✅ Database connection successful. Users table accessible.`);
+            this.logger.log('✅ Database connection successful. Users table accessible.');
         } catch (error) {
             this.logger.error('❌ Failed to test database connection:', error);
             throw error;
