@@ -1,6 +1,7 @@
 import { Module, Global } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PostgresService } from './postgres.service';
+import { DatabaseService } from './database.service';
 import { MigrationService } from './migration.service';
 import { DatabaseController } from './database.controller';
 import {
@@ -23,6 +24,7 @@ import { TestPostgresRepositoriesService } from './test-postgres-repositories.se
     imports: [ConfigModule],
     controllers: [DatabaseController],
     providers: [
+        DatabaseService, // Legacy (Supabase) service to satisfy old repositories; no-op if env missing
         PostgresService, // PostgreSQL service
         MigrationService, // Database migration service
         // Legacy Supabase repositories
@@ -40,6 +42,7 @@ import { TestPostgresRepositoriesService } from './test-postgres-repositories.se
         TestPostgresRepositoriesService,
     ],
     exports: [
+        DatabaseService, // Export legacy service for any remaining injections
         PostgresService, // Export PostgreSQL service
         MigrationService, // Export migration service
         // Legacy Supabase repositories

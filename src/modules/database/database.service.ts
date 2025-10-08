@@ -14,7 +14,8 @@ export class DatabaseService implements OnModuleInit {
         const supabaseServiceKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
 
         if (!supabaseUrl || !supabaseServiceKey) {
-            throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured');
+            this.logger.warn('Supabase env not set; skipping Supabase initialization. Backend will operate with PostgreSQL only.');
+            return;
         }
 
         this.supabaseClient = createClient(supabaseUrl as string, supabaseServiceKey as string, {
