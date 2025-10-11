@@ -1,6 +1,5 @@
 import { Module } from '@nestjs/common';
 import { DocumentsService } from './documents.service';
-import { DocumentsController } from './documents.controller';
 import { DocumentsPostgresController } from './documents-postgres.controller';
 import { DocumentsCloudinaryController } from './documents-cloudinary.controller';
 import { DatabaseModule } from '../database/database.module';
@@ -19,7 +18,7 @@ import { extname } from 'path';
             useFactory: () => {
                 return {
                     storage: diskStorage({
-                        destination: '/tmp', // Use temp directory since we upload to Supabase
+                        destination: '/tmp', // Use temp directory for file uploads
                         filename: (req, file, cb) => {
                             const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
                             const extension = extname(file.originalname);
@@ -48,7 +47,7 @@ import { extname } from 'path';
             },
         }),
     ],
-    controllers: [DocumentsController, DocumentsPostgresController, DocumentsCloudinaryController],
+    controllers: [DocumentsPostgresController, DocumentsCloudinaryController],
     providers: [DocumentsService],
     exports: [DocumentsService],
 })
