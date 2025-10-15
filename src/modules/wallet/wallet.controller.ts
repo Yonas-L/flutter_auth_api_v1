@@ -9,7 +9,6 @@ import {
   ValidationPipe,
   BadRequestException,
   Headers,
-  Logger,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { WalletService } from './wallet.service';
@@ -19,8 +18,6 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 @Controller('api/wallet')
 @UseGuards(JwtAuthGuard)
 export class WalletController {
-  private readonly logger = new Logger(WalletController.name);
-  
   constructor(private readonly walletService: WalletService) { }
 
   @Get('balance')
@@ -79,54 +76,33 @@ export class WalletController {
     @Headers('chapa-signature') chapaSignatureA: string,
     @Headers('x-chapa-signature') chapaSignatureB: string,
   ) {
-    this.logger.log('Received Chapa webhook:', JSON.stringify(payload));
-    this.logger.log('Headers:', { 'chapa-signature': chapaSignatureA, 'x-chapa-signature': chapaSignatureB });
-    
     const secretKey = process.env.CHAPA_SECRET_KEY || '';
     const webhookSecret = process.env.CHAPA_WEBHOOK_SECRET || '';
     if (!secretKey) {
-      this.logger.error('Chapa secret key not configured');
       throw new BadRequestException('Chapa secret key not configured');
     }
 
-    // Verify signature if provided
-    if (chapaSignatureA || chapaSignatureB) {
-      const payloadString = JSON.stringify(payload);
-      const expectedSigB = crypto
-        .createHmac('sha256', secretKey)
-        .update(payloadString)
-        .digest('hex');
-      const expectedSigA = webhookSecret
-        ? crypto.createHmac('sha256', webhookSecret).update(webhookSecret).digest('hex')
-        : '';
+    const payloadString = JSON.stringify(payload);
+    const expectedSigB = crypto
+      .createHmac('sha256', secretKey)
+      .update(payloadString)
+      .digest('hex');
+    const expectedSigA = webhookSecret
+      ? crypto.createHmac('sha256', webhookSecret).update(webhookSecret).digest('hex')
+      : '';
 
-      this.logger.log('Expected signatures:', { expectedSigA, expectedSigB });
-
-      const sigBValid = !!chapaSignatureB && chapaSignatureB === expectedSigB;
-      const sigAValid = !!webhookSecret && !!chapaSignatureA && chapaSignatureA === expectedSigA;
-      
-      if (!sigAValid && !sigBValid) {
-        this.logger.error('Invalid webhook signature');
-        throw new BadRequestException('Invalid webhook signature');
-      }
-    } else {
-      this.logger.warn('No signature provided in webhook');
+    const sigBValid = !!chapaSignatureB && chapaSignatureB === expectedSigB;
+    const sigAValid = !!webhookSecret && !!chapaSignatureA && chapaSignatureA === expectedSigA;
+    if (!sigAValid && !sigBValid) {
+      throw new BadRequestException('Invalid webhook signature');
     }
 
-    // Extract transaction reference from various possible fields
     const txRef = payload.tx_ref || payload.trx_ref || payload.reference || payload.chapa_tx_ref;
-    
-    // Determine status from various possible fields
-    const status = 
-      payload.status === 'success' || 
-      payload.event === 'charge.success' ? 'success' : 'failed';
-    
+    const status = payload.status === 'success' || payload.event === 'charge.success' ? 'success' : 'failed';
     if (!txRef) {
-      this.logger.error('Missing tx_ref in webhook payload');
       throw new BadRequestException('Missing tx_ref in webhook payload');
     }
 
-    this.logger.log(`Processing webhook for tx_ref: ${txRef}, status: ${status}`);
     const result = await this.walletService.handlePaymentCallback(txRef, status);
     return { ok: true, result };
   }
