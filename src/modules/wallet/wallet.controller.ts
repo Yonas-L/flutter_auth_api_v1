@@ -54,12 +54,20 @@ export class WalletController {
     return this.walletService.getUserWithdrawalRequests(req.user.id);
   }
 
-  // Webhook endpoint for Chapa payment callbacks
+  // Webhook endpoint for Chapa payment callbacks (public endpoint)
+  @UseGuards()
   @Post('deposit/callback')
-  async handlePaymentCallback(@Body() callbackData: any) {
+  async handlePaymentCallback(@Body() callbackData: any, @Headers() headers: any) {
+    console.log('Payment callback received:', {
+      tx_ref: callbackData.tx_ref,
+      status: callbackData.status,
+      event: callbackData.event,
+      headers: headers
+    });
+
     // Chapa webhook sends different data structure
     const chapaTxRef = callbackData.tx_ref || callbackData.chapa_tx_ref;
-    const status = callbackData.status === 'success' ? 'success' : 'failed';
+    const status = callbackData.status === 'success' || callbackData.event === 'charge.success' ? 'success' : 'failed';
 
     if (!chapaTxRef) {
       throw new BadRequestException('Missing transaction reference');

@@ -16,29 +16,52 @@ export class WalletWebhookController {
     @SetMetadata('isPublic', true)
     async handleWebhook(
         @Body() payload: any,
-        @Headers('chapa-signature') chapaSignatureA: string,
-        @Headers('x-chapa-signature') chapaSignatureB: string,
+        @Headers('chapa-signature') chapaSignature: string,
+        @Headers('x-chapa-signature') xChapaSignature: string,
     ) {
-        const secretKey = process.env.CHAPA_SECRET_KEY || '';
-        const webhookSecret = process.env.CHAPA_WEBHOOK_SECRET || '';
-        if (!secretKey) {
+        // Webhook secret hash configured in Chapa dashboard
+        const webhookSecret = process.env.CHAPA_SECRET_KEY || '';
+        if (!webhookSecret) {
             throw new BadRequestException('Chapa secret key not configured');
         }
 
-        const payloadString = JSON.stringify(payload);
+        console.log('Webhook received:', {
+            event: payload.event,
+            tx_ref: payload.tx_ref,
+            status: payload.status,
+            chapaSignature,
+            xChapaSignature
+        });
+
+        // Verify webhook signature according to Chapa documentation
         // x-chapa-signature: HMAC SHA256(payload, secret)
-        const expectedSigB = crypto
-            .createHmac('sha256', secretKey)
+        const payloadString = JSON.stringify(payload);
+        const expectedXChapaSignature = crypto
+            .createHmac('sha256', webhookSecret)
             .update(payloadString)
             .digest('hex');
-        // Chapa-Signature: HMAC SHA256(secret, secret) when webhookSecret provided
-        const expectedSigA = webhookSecret
-            ? crypto.createHmac('sha256', webhookSecret).update(webhookSecret).digest('hex')
-            : '';
+        
+        // chapa-signature: HMAC SHA256(secret, secret)
+        const expectedChapaSignature = crypto
+            .createHmac('sha256', webhookSecret)
+            .update(webhookSecret)
+            .digest('hex');
 
-        const sigBValid = !!chapaSignatureB && chapaSignatureB === expectedSigB;
-        const sigAValid = !!webhookSecret && !!chapaSignatureA && chapaSignatureA === expectedSigA;
-        if (!sigAValid && !sigBValid) {
+        // Verify either signature is valid (Chapa sends both)
+        const xChapaValid = !!xChapaSignature && xChapaSignature === expectedXChapaSignature;
+        const chapaValid = !!chapaSignature && chapaSignature === expectedChapaSignature;
+        
+        console.log('Signature validation:', {
+            xChapaValid,
+            chapaValid,
+            expectedXChapaSignature,
+            expectedChapaSignature,
+            receivedXChapaSignature: xChapaSignature,
+            receivedChapaSignature: chapaSignature
+        });
+
+        if (!xChapaValid && !chapaValid) {
+            console.error('Invalid webhook signature');
             throw new BadRequestException('Invalid webhook signature');
         }
 
