@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { UsersRepository } from '../database/repositories/users.repository';
-import { VehiclesRepository } from '../database/repositories/vehicles.repository';
+import { VehiclesPostgresRepository } from '../database/repositories/vehicles-postgres.repository';
 import { DocumentsRepository } from '../database/repositories/documents.repository';
 import { CreateDriverProfileDto } from './dto/create-driver-profile.dto';
 import { UpdateDriverProfileDto } from './dto/update-driver-profile.dto';
@@ -15,7 +15,7 @@ export class DriverProfilesService {
   constructor(
     private readonly driverProfilesRepository: DriverProfilesPostgresRepository,
     private readonly usersRepository: UsersRepository,
-    private readonly vehiclesRepository: VehiclesRepository,
+    private readonly vehiclesRepository: VehiclesPostgresRepository,
     private readonly documentsRepository: DocumentsRepository,
   ) { }
 

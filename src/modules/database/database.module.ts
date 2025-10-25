@@ -17,6 +17,8 @@ import {
     OtpPostgresRepository,
     DocumentsPostgresRepository
 } from './repositories';
+import { VehiclesPostgresRepository } from './repositories/vehicles-postgres.repository';
+import { DriverProfilesPostgresRepository } from './repositories/driver-profiles-postgres.repository';
 import { TestPostgresRepositoriesService } from './test-postgres-repositories.service';
 
 @Global()
@@ -38,6 +40,8 @@ import { TestPostgresRepositoriesService } from './test-postgres-repositories.se
         TripsPostgresRepository,
         OtpPostgresRepository,
         DocumentsPostgresRepository,
+        VehiclesPostgresRepository,
+        DriverProfilesPostgresRepository,
         // Test service
         TestPostgresRepositoriesService,
     ],
@@ -56,6 +60,8 @@ import { TestPostgresRepositoriesService } from './test-postgres-repositories.se
         TripsPostgresRepository,
         OtpPostgresRepository,
         DocumentsPostgresRepository,
+        VehiclesPostgresRepository,
+        DriverProfilesPostgresRepository,
     ],
 })
 export class DatabaseModule { }
