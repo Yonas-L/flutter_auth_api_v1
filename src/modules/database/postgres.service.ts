@@ -16,15 +16,16 @@ export class PostgresService implements OnModuleInit {
             throw new Error('DATABASE_URL must be configured');
         }
 
+        this.logger.log(`🔗 Connecting to PostgreSQL with URL: ${connectionString.substring(0, 50)}...`);
+
         this.pool = new Pool({
             connectionString,
             ssl: {
                 rejectUnauthorized: false // Required for Render PostgreSQL
             },
-            max: 20, // Maximum number of clients in the pool
-            idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-            connectionTimeoutMillis: 10000, // Return an error after 10 seconds if connection could not be established
-
+            max: 10, // Reduced pool size for better stability
+            idleTimeoutMillis: 60000, // Increased idle timeout
+            connectionTimeoutMillis: 20000, // Increased connection timeout
         });
 
         this.logger.log('✅ PostgreSQL pool initialized successfully');
@@ -47,12 +48,21 @@ export class PostgresService implements OnModuleInit {
      * Execute a query with parameters
      */
     async query(text: string, params?: any[]): Promise<any> {
-        const client = await this.getClient();
+        let client: PoolClient | null = null;
         try {
+            this.logger.debug(`🔍 Executing query: ${text.substring(0, 100)}...`);
+            client = await this.getClient();
             const result = await client.query(text, params);
+            this.logger.debug(`✅ Query executed successfully, rows: ${result.rows?.length || 0}`);
             return result;
+        } catch (error) {
+            this.logger.error(`❌ Query failed: ${text.substring(0, 100)}...`);
+            this.logger.error(`❌ Error details:`, error.message);
+            throw error;
         } finally {
-            client.release();
+            if (client) {
+                client.release();
+            }
         }
     }
 
