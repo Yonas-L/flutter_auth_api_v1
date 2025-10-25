@@ -131,13 +131,14 @@ export class OtpService {
     code: string,
     verificationId: string,
     messageId: string,
-    ttlSeconds: number
+    ttlSeconds: number,
+    purpose: string = 'login'
   ): Promise<any> {
     try {
       this.logger.log(`📝 Storing AfroMessage OTP for ${phoneNumber}`);
 
-      // Clean up any existing OTPs for this phone number
-      await this.otpRepository.deleteAllForPhoneAndPurpose(phoneNumber, 'login');
+      // Clean up any existing OTPs for this phone number and purpose
+      await this.otpRepository.deleteAllForPhoneAndPurpose(phoneNumber, purpose);
 
       // Calculate expiration time
       const expiresAt = new Date();
@@ -147,7 +148,7 @@ export class OtpService {
       const otpCode = await this.otpRepository.create({
         phone_number: phoneNumber,
         code_hash: code, // Store as plain text since AfroMessage handles verification
-        purpose: 'login' as any,
+        purpose: purpose as any,
         expires_at: expiresAt.toISOString(),
         max_attempts: 3,
         // TODO: Add verification_id and message_id after database migration

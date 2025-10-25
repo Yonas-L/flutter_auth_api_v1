@@ -9,6 +9,7 @@ export interface SendOtpRequest {
     ttl?: number;
     from?: string;
     sender?: string;
+    purpose?: string;
 }
 
 export interface VerifyOtpRequest {
@@ -56,12 +57,14 @@ export class OtpAfroMessageController {
             }
 
             // Store OTP in our database for tracking
+            const purpose = request.purpose || 'login';
             await this.otpService.storeAfroMessageOtp(
                 request.to,
                 result.code!,
                 result.verificationId!,
                 result.messageId!,
-                request.ttl || 600
+                request.ttl || 600,
+                purpose
             );
 
             this.logger.log(`✅ OTP sent successfully to ${request.to}`);
@@ -96,68 +99,66 @@ export class OtpAfroMessageController {
                 throw new HttpException('Missing required parameters: to, code', HttpStatus.BAD_REQUEST);
             }
 
-            // Use AfroMessage to verify OTP
-            const result = await this.afroMessageService.verifyOtp(
+            // Verify OTP against database (not just format check)
+            // Try both 'login' and 'registration' purposes since we don't know which one was used
+            let verificationResult = await this.otpService.verifyOtpForPhone(
                 request.to,
                 request.code,
-                request.vc
+                'login'
             );
 
-            if (!result.success) {
+            // If login verification fails, try registration purpose
+            if (!verificationResult.valid) {
+                this.logger.log(`🔄 Login OTP failed, trying registration purpose for ${request.to}`);
+                verificationResult = await this.otpService.verifyOtpForPhone(
+                    request.to,
+                    request.code,
+                    'registration'
+                );
+            }
+
+            if (!verificationResult.valid) {
+                this.logger.warn(`❌ Invalid OTP for ${request.to}: ${verificationResult.message}`);
                 throw new HttpException(
-                    `OTP verification failed: ${result.error}`,
+                    verificationResult.message || 'Invalid OTP code',
                     HttpStatus.BAD_REQUEST
                 );
             }
 
-            if (result.valid) {
-                this.logger.log(`✅ OTP verified successfully for ${request.to}`);
+            this.logger.log(`✅ OTP verified successfully for ${request.to}`);
 
-                try {
-                    // Delete OTP from database after successful verification
-                    await this.otpService.deleteOtpAfterVerification(request.to, request.code);
+            try {
+                // Authenticate user and get JWT tokens
+                this.logger.log(`🔐 Authenticating user for phone: ${request.to}`);
+                const authResult = await this.simpleAuthService.authenticateUserByPhone(request.to);
 
-                    // Authenticate user and get JWT tokens
-                    this.logger.log(`🔐 Authenticating user for phone: ${request.to}`);
-                    const authResult = await this.simpleAuthService.authenticateUserByPhone(request.to);
+                this.logger.log(`✅ User authenticated successfully for ${request.to}, redirecting to: ${authResult.redirectTo}`);
 
-                    this.logger.log(`✅ User authenticated successfully for ${request.to}, redirecting to: ${authResult.redirectTo}`);
-
-                    return {
-                        acknowledge: 'success',
-                        response: {
-                            valid: result.valid,
-                            to: request.to,
-                            message: 'OTP verified successfully'
-                        },
-                        accessToken: authResult.accessToken,
-                        refreshToken: authResult.refreshToken,
-                        user: authResult.user,
-                        redirectTo: authResult.redirectTo
-                    };
-                } catch (authError) {
-                    this.logger.error(`❌ Error processing OTP verification for ${request.to}:`, authError);
-                    // Still return success for OTP verification but without auth data
-                    return {
-                        acknowledge: 'success',
-                        response: {
-                            valid: result.valid,
-                            to: request.to,
-                            message: 'OTP verified successfully'
-                        },
-                        redirectTo: 'register-1'
-                    };
-                }
+                return {
+                    acknowledge: 'success',
+                    response: {
+                        valid: true,
+                        to: request.to,
+                        message: 'OTP verified successfully'
+                    },
+                    accessToken: authResult.accessToken,
+                    refreshToken: authResult.refreshToken,
+                    user: authResult.user,
+                    redirectTo: authResult.redirectTo
+                };
+            } catch (authError) {
+                this.logger.error(`❌ Error processing OTP verification for ${request.to}:`, authError);
+                // Still return success for OTP verification but without auth data
+                return {
+                    acknowledge: 'success',
+                    response: {
+                        valid: true,
+                        to: request.to,
+                        message: 'OTP verified successfully'
+                    },
+                    redirectTo: 'register-1'
+                };
             }
-
-            return {
-                acknowledge: 'success',
-                response: {
-                    valid: result.valid,
-                    to: request.to,
-                    message: result.valid ? 'OTP verified successfully' : 'Invalid OTP code'
-                }
-            };
         } catch (error) {
             this.logger.error(`❌ Error verifying OTP:`, error);
             throw error;
