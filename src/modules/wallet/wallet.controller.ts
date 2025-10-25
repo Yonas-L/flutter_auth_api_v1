@@ -28,7 +28,7 @@ export class WalletController {
   @Get('transactions')
   async getTransactions(
     @Request() req,
-    @Query(ValidationPipe) query: TransactionQueryDto,
+    @Query(new ValidationPipe({ transform: true, transformOptions: { enableImplicitConversion: true } })) query: TransactionQueryDto,
   ) {
     return this.walletService.getTransactions(req.user.id, query);
   }
