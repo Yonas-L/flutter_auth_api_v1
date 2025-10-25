@@ -35,19 +35,32 @@ export class SimpleAuthService {
         this.logger.log(`🔍 Authenticating user by phone: ${phoneE164}`);
 
         try {
+            // Test database connection first
+            this.logger.log(`🔗 Testing database connection...`);
+            const testQuery = await this.postgresService.query('SELECT 1 as test');
+            this.logger.log(`✅ Database connection successful: ${JSON.stringify(testQuery.rows)}`);
+
             // Find existing user
+            this.logger.log(`🔍 Looking for existing user with phone: ${phoneE164}`);
             let user = await this.usersRepository.findByPhone(phoneE164);
+            this.logger.log(`👤 User lookup result: ${user ? `Found user ${user.id}` : 'No existing user found'}`);
 
             if (!user) {
                 // New user - create basic user record
                 this.logger.log(`👤 Creating new user for: ${phoneE164}`);
-                user = await this.usersRepository.create({
-                    phone_number: phoneE164,
-                    user_type: 'driver',
-                    is_phone_verified: true,
-                    is_active: true,
-                    status: 'pending_verification',
-                });
+                try {
+                    user = await this.usersRepository.create({
+                        phone_number: phoneE164,
+                        user_type: 'driver',
+                        is_phone_verified: true,
+                        is_active: true,
+                        status: 'pending_verification',
+                    });
+                    this.logger.log(`✅ User created successfully: ${user.id} for phone: ${phoneE164}`);
+                } catch (createError) {
+                    this.logger.error(`❌ Failed to create user for ${phoneE164}:`, createError);
+                    throw new Error(`Failed to create user: ${createError.message}`);
+                }
 
                 // New user should go to registration
                 return this.generateAuthResult(user, 'register-1');

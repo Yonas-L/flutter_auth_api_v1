@@ -132,7 +132,7 @@ export class OtpAfroMessageController {
                 this.logger.log(`🔐 Authenticating user for phone: ${request.to}`);
                 const authResult = await this.simpleAuthService.authenticateUserByPhone(request.to);
 
-                this.logger.log(`✅ User authenticated successfully for ${request.to}, redirecting to: ${authResult.redirectTo}`);
+                this.logger.log(`✅ User authenticated successfully for ${request.to}, User ID: ${authResult.user.id}, redirecting to: ${authResult.redirectTo}`);
 
                 return {
                     acknowledge: 'success',
@@ -148,16 +148,13 @@ export class OtpAfroMessageController {
                 };
             } catch (authError) {
                 this.logger.error(`❌ Error processing OTP verification for ${request.to}:`, authError);
-                // Still return success for OTP verification but without auth data
-                return {
-                    acknowledge: 'success',
-                    response: {
-                        valid: true,
-                        to: request.to,
-                        message: 'OTP verified successfully'
-                    },
-                    redirectTo: 'register-1'
-                };
+                this.logger.error(`❌ Full error details:`, authError.stack);
+                
+                // Return error instead of fallback - we need to know why user creation is failing
+                throw new HttpException(
+                    `Authentication failed: ${authError.message}`,
+                    HttpStatus.INTERNAL_SERVER_ERROR
+                );
             }
         } catch (error) {
             this.logger.error(`❌ Error verifying OTP:`, error);
