@@ -42,11 +42,23 @@ export class TripsService {
         @Inject(forwardRef(() => NotificationsService)) private readonly notificationsService: NotificationsService,
     ) { }
 
+    /**
+     * Creates a driver-initiated trip (from Flutter driver app)
+     * 
+     * Flow:
+     * - Driver creates trip directly from app
+     * - Trip status: 'in_progress' (immediately active)
+     * - Driver is already assigned (driver_id set)
+     * - NO broadcast to other drivers (driver's own trip)
+     * - Returns trip immediately for driver to proceed
+     * 
+     * This is different from createDispatcherTrip which broadcasts to all drivers.
+     */
     async createTrip(driverUserId: string, createTripDto: any) {
         const client = await this.postgresService.getClient();
 
         try {
-            this.logger.log(`Starting trip creation for driver: ${driverUserId}`);
+            this.logger.log(`🚗 Creating driver-initiated trip for driver: ${driverUserId}`);
             this.logger.log(`Trip data: ${JSON.stringify(createTripDto, null, 2)}`);
 
             await client.query('BEGIN');
@@ -307,6 +319,19 @@ export class TripsService {
         }
     }
 
+    /**
+     * Creates a customer support/dispatcher-initiated trip (from website dashboard)
+     * 
+     * Flow:
+     * - Customer support creates trip from dashboard
+     * - Trip status: 'requested' (needs driver to accept)
+     * - NO driver assigned initially (driver_id is null)
+     * - Broadcasts to ALL available drivers via 'trip_support_broadcast' event
+     * - Flutter app shows modal for drivers to accept/decline
+     * - First driver to accept gets assigned
+     * 
+     * This is different from createTrip which is driver's own trip and doesn't broadcast.
+     */
     async createDispatcherTrip(dispatcherUserId: string, tripDto: DispatcherTripDto) {
         const client = await this.postgresService.getClient();
 
@@ -436,8 +461,10 @@ export class TripsService {
 
             await client.query('COMMIT');
 
-            this.logger.log(`Dispatcher trip created: ${trip.id}`);
+            this.logger.log(`📞 Dispatcher trip created: ${trip.id}`);
 
+            // Broadcast to all available drivers (ONLY for dispatcher trips, NOT driver-initiated)
+            // Driver-initiated trips (createTrip) do NOT broadcast - they're already assigned
             await this.notifyAvailableDrivers(trip);
             await this.scheduleAutoCancel(trip.id, 5);
 
@@ -451,6 +478,14 @@ export class TripsService {
         }
     }
 
+    /**
+     * Broadcasts trip request to all available drivers
+     * 
+     * ONLY called for dispatcher/customer support trips (createDispatcherTrip)
+     * NOT called for driver-initiated trips (createTrip) - they're already assigned
+     * 
+     * Event: 'trip_support_broadcast' - matches Flutter app listener
+     */
     private async notifyAvailableDrivers(trip: any) {
         try {
             const connectedDrivers = this.socketGateway.getConnectedDrivers();
@@ -460,31 +495,74 @@ export class TripsService {
                 return;
             }
 
+            // Only broadcast if trip has no driver assigned (dispatcher trip)
+            // Driver-initiated trips already have driver_id and should not broadcast
+            if (trip.driver_id) {
+                this.logger.warn(`Skipping broadcast for trip ${trip.id} - already has driver assigned (driver-initiated trip)`);
+                return;
+            }
+
+            // Get passenger phone number and name from users table
+            let passengerPhone = trip.passenger_phone;
+            let passengerName = trip.passenger_name;
+            if (trip.passenger_id && (!passengerPhone || !passengerName)) {
+                const client = await this.postgresService.getClient();
+                try {
+                    const userQuery = 'SELECT phone_number, full_name FROM users WHERE id = $1';
+                    const userResult = await client.query(userQuery, [trip.passenger_id]);
+                    if (userResult.rows.length > 0) {
+                        passengerPhone = passengerPhone || userResult.rows[0].phone_number;
+                        passengerName = passengerName || userResult.rows[0].full_name || 'Walk-in Passenger';
+                    }
+                } catch (error) {
+                    this.logger.warn(`Could not fetch passenger info for trip ${trip.id}: ${error}`);
+                } finally {
+                    client.release();
+                }
+            }
+
+            // Convert fare from cents to ETB for Flutter app
+            const fareEstimate = trip.estimated_fare_cents ? trip.estimated_fare_cents / 100 : null;
+
+            // Format payload to match SupportTripRequest model in Flutter app
             const payload = {
                 tripId: trip.id,
+                trip_id: trip.id, // Support both formats
+                passengerPhone: passengerPhone || '',
+                passenger_phone: passengerPhone || '', // Support both formats
+                passengerName: passengerName || 'Walk-in Passenger',
+                passenger_name: passengerName || 'Walk-in Passenger', // Support both formats
                 pickup: {
                     address: trip.pickup_address,
                     lat: trip.pickup_latitude,
                     lng: trip.pickup_longitude,
+                    latitude: trip.pickup_latitude, // Support both formats
+                    longitude: trip.pickup_longitude, // Support both formats
                 },
                 dropoff: {
                     address: trip.dropoff_address,
                     lat: trip.dropoff_latitude,
                     lng: trip.dropoff_longitude,
+                    latitude: trip.dropoff_latitude, // Support both formats
+                    longitude: trip.dropoff_longitude, // Support both formats
                 },
+                fareEstimate: fareEstimate,
+                fare_estimate: fareEstimate, // Support both formats
+                estimated_fare_cents: trip.estimated_fare_cents, // Keep for backward compatibility
                 estimated_distance_km: trip.estimated_distance_km,
                 estimated_duration_minutes: trip.estimated_duration_minutes,
-                estimated_fare_cents: trip.estimated_fare_cents,
                 trip_type: trip.trip_type,
-                passenger_phone: trip.passenger_phone,
-                passenger_name: trip.passenger_name,
                 trip_reference: trip.trip_reference,
                 status: trip.status,
                 created_at: trip.created_at,
+                expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes expiry
+                expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // Support both formats
             };
 
+            this.logger.log(`📡 Broadcasting trip_support_broadcast to ${connectedDrivers.size} drivers for trip ${trip.id}`);
+
             connectedDrivers.forEach((socket, driverUserId) => {
-                this.socketGateway.sendToDriver(driverUserId, 'trip:request', payload);
+                this.socketGateway.sendToDriver(driverUserId, 'trip_support_broadcast', payload);
             });
 
             const dispatcherUserId = trip.dispatcher_user_id;
