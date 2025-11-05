@@ -799,8 +799,22 @@ export class TripsService {
                 return { success: false, error: 'Trip already assigned to another driver' };
             }
 
-            // Update trip with driver assignment
-            const updateQuery = `
+            // Resolve driver profile ID from user ID
+            const driverProfileQuery = `
+                SELECT id
+                FROM driver_profiles
+                WHERE user_id = $1
+                FOR UPDATE
+            `;
+            const driverProfileResult = await client.query(driverProfileQuery, [driverUserId]);
+            if (driverProfileResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return { success: false, error: 'Driver profile not found' };
+            }
+            const driverProfileId = driverProfileResult.rows[0].id;
+
+            // Update trip with driver assignment (use driver profile ID)
+            const updateTripQuery = `
                 UPDATE trips
                 SET driver_id = $1,
                     status = 'accepted',
@@ -809,9 +823,18 @@ export class TripsService {
                 WHERE id = $2
                 RETURNING *
             `;
-
-            const updateResult = await client.query(updateQuery, [driverUserId, tripId]);
+            const updateResult = await client.query(updateTripQuery, [driverProfileId, tripId]);
             const updatedTrip = updateResult.rows[0];
+
+            // Update driver profile: set current trip and make unavailable
+            const updateDriverProfileQuery = `
+                UPDATE driver_profiles
+                SET current_trip_id = $1,
+                    is_available = false,
+                    updated_at = NOW()
+                WHERE id = $2
+            `;
+            await client.query(updateDriverProfileQuery, [tripId, driverProfileId]);
 
             await client.query('COMMIT');
 
