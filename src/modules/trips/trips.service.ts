@@ -392,12 +392,11 @@ export class TripsService {
                     request_timestamp,
                     trip_reference,
                     is_new_passenger,
-                    dispatcher_user_id,
                     special_instructions
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, ST_Point($7, $8)::point,
                     $9, $10, $11, ST_Point($12, $13)::point, $14, $15, $16,
-                    $17, $18, $19, $20, NOW(), $21, $22, $23, $24
+                    $17, $18, $19, $20, NOW(), $21, $22, $23
                 ) RETURNING *
             `;
 
@@ -424,7 +423,6 @@ export class TripsService {
                 'pending',
                 tripReference,
                 passengerProfileId ? false : true,
-                dispatcherUserId,
                 tripDto.special_instructions || tripDto.trip_details?.special_instructions || tripDto.package_description || null,
             ];
 
