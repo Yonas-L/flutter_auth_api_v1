@@ -9,10 +9,12 @@ import { AuthPostgresModule } from '../auth/auth-postgres.module';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { VehiclesPostgresRepository } from '../database/repositories/vehicles-postgres.repository';
 import { SocketGateway } from '../socket/socket.gateway';
+import { NotificationsModule } from '../../notifications/notifications.module';
 
 @Module({
     imports: [
         DatabaseModule,
+        NotificationsModule,
         AuthPostgresModule, // For JWT authentication
         JwtModule.registerAsync({
             inject: [ConfigService],
