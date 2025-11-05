@@ -366,8 +366,11 @@ export class TripsService {
             const passengerProfileId = passengerProfileResult.rows.length ? passengerProfileResult.rows[0].id : null;
 
             const tripReference = `TRP-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
-            const estimatedDurationMinutes = tripDto.estimated_duration_minutes ||
+            // Ensure integer minutes for integer column in DB
+            const estimatedDurationMinutesRaw =
+                tripDto.estimated_duration_minutes ??
                 this.calculateEstimatedDuration(tripDto.estimated_distance_km || 0);
+            const estimatedDurationMinutes = Math.ceil(Number(estimatedDurationMinutesRaw || 0));
 
             const tripQuery = `
                 INSERT INTO trips (
