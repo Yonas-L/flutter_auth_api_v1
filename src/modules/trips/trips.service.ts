@@ -496,6 +496,8 @@ export class TripsService {
      */
     private async findNearbyDrivers(pickupLat: number, pickupLng: number, radiusKm: number = 10): Promise<string[]> {
         try {
+            // Extract coordinates from PostgreSQL POINT type and convert to PostGIS geography
+            // POINT type stores (lng, lat) as (x, y)
             const query = `
                 SELECT dp.user_id
                 FROM driver_profiles dp
@@ -504,13 +506,13 @@ export class TripsService {
                   AND dp.last_known_location IS NOT NULL
                   AND dp.last_location_update > NOW() - INTERVAL '5 minutes'
                   AND ST_DWithin(
-                      dp.last_known_location::geography,
-                      ST_Point($1, $2)::geography,
+                      ST_SetSRID(ST_MakePoint((dp.last_known_location).x, (dp.last_known_location).y), 4326)::geography,
+                      ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
                       $3 * 1000
                   )
                 ORDER BY ST_Distance(
-                    dp.last_known_location::geography,
-                    ST_Point($1, $2)::geography
+                    ST_SetSRID(ST_MakePoint((dp.last_known_location).x, (dp.last_known_location).y), 4326)::geography,
+                    ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
                 )
                 LIMIT 20
             `;
