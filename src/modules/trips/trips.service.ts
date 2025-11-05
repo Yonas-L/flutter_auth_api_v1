@@ -28,10 +28,19 @@ export interface DispatcherTripDto {
     special_instructions?: string;
 }
 
+interface BroadcastState {
+    tripId: string;
+    nearbyDrivers: string[]; // user_id array
+    currentIndex: number;
+    broadcastStartTime: Date;
+    timer: NodeJS.Timeout | null;
+}
+
 @Injectable()
 export class TripsService {
     private readonly logger = new Logger(TripsService.name);
     private autoCancelTimers: Map<string, NodeJS.Timeout> = new Map();
+    private tripBroadcasts: Map<string, BroadcastState> = new Map();
 
     constructor(
         private readonly postgresService: PostgresService,
@@ -466,7 +475,7 @@ export class TripsService {
             // Broadcast to all available drivers (ONLY for dispatcher trips, NOT driver-initiated)
             // Driver-initiated trips (createTrip) do NOT broadcast - they're already assigned
             await this.notifyAvailableDrivers(trip);
-            await this.scheduleAutoCancel(trip.id, 5);
+            await this.scheduleAutoCancel(trip.id, 10); // 10 minutes total for sequential broadcasting
 
             return trip;
         } catch (error) {
@@ -479,7 +488,47 @@ export class TripsService {
     }
 
     /**
-     * Broadcasts trip request to all available drivers
+     * Find nearby drivers using PostGIS spatial query
+     * @param pickupLat Pickup latitude
+     * @param pickupLng Pickup longitude  
+     * @param radiusKm Search radius in kilometers (default 10km)
+     * @returns Array of driver user IDs sorted by distance
+     */
+    private async findNearbyDrivers(pickupLat: number, pickupLng: number, radiusKm: number = 10): Promise<string[]> {
+        try {
+            const query = `
+                SELECT dp.user_id
+                FROM driver_profiles dp
+                WHERE dp.is_online = true 
+                  AND dp.is_available = true
+                  AND dp.last_known_location IS NOT NULL
+                  AND dp.last_location_update > NOW() - INTERVAL '5 minutes'
+                  AND ST_DWithin(
+                      dp.last_known_location::geography,
+                      ST_Point($1, $2)::geography,
+                      $3 * 1000
+                  )
+                ORDER BY ST_Distance(
+                    dp.last_known_location::geography,
+                    ST_Point($1, $2)::geography
+                )
+                LIMIT 20
+            `;
+
+            const result = await this.postgresService.query(query, [pickupLng, pickupLat, radiusKm]);
+            const driverUserIds = result.rows.map(row => row.user_id);
+
+            this.logger.log(`Found ${driverUserIds.length} nearby drivers within ${radiusKm}km of (${pickupLat}, ${pickupLng})`);
+            
+            return driverUserIds;
+        } catch (error) {
+            this.logger.error('Error finding nearby drivers:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Broadcasts trip request to nearby drivers sequentially
      * 
      * ONLY called for dispatcher/customer support trips (createDispatcherTrip)
      * NOT called for driver-initiated trips (createTrip) - they're already assigned
@@ -488,17 +537,68 @@ export class TripsService {
      */
     private async notifyAvailableDrivers(trip: any) {
         try {
-            const connectedDrivers = this.socketGateway.getConnectedDrivers();
-
-            if (!connectedDrivers.size) {
-                this.logger.warn('No connected drivers to broadcast trip request');
-                return;
-            }
-
             // Only broadcast if trip has no driver assigned (dispatcher trip)
             // Driver-initiated trips already have driver_id and should not broadcast
             if (trip.driver_id) {
                 this.logger.warn(`Skipping broadcast for trip ${trip.id} - already has driver assigned (driver-initiated trip)`);
+                return;
+            }
+
+            // Find nearby drivers using PostGIS
+            const nearbyDrivers = await this.findNearbyDrivers(
+                trip.pickup_latitude,
+                trip.pickup_longitude,
+                10 // 10km radius
+            );
+
+            if (nearbyDrivers.length === 0) {
+                this.logger.warn(`No nearby drivers found for trip ${trip.id}`);
+                return;
+            }
+
+            // Initialize broadcast state
+            const broadcastState: BroadcastState = {
+                tripId: trip.id,
+                nearbyDrivers,
+                currentIndex: 0,
+                broadcastStartTime: new Date(),
+                timer: null,
+            };
+
+            this.tripBroadcasts.set(trip.id, broadcastState);
+
+            // Start broadcasting to first driver
+            await this.broadcastToNextDriver(trip, broadcastState);
+
+        } catch (error) {
+            this.logger.error('Failed to start sequential broadcast:', error);
+        }
+    }
+
+    /**
+     * Broadcast to the next driver in the sequence
+     */
+    private async broadcastToNextDriver(trip: any, broadcastState: BroadcastState) {
+        try {
+            // Check if we've exhausted all drivers or exceeded 10 minutes
+            const elapsed = Date.now() - broadcastState.broadcastStartTime.getTime();
+            if (broadcastState.currentIndex >= broadcastState.nearbyDrivers.length || elapsed > 10 * 60 * 1000) {
+                this.logger.warn(`Trip ${trip.id} exhausted all drivers or exceeded time limit`);
+                this.tripBroadcasts.delete(trip.id);
+                return;
+            }
+
+            const driverUserId = broadcastState.nearbyDrivers[broadcastState.currentIndex];
+            this.logger.log(`Broadcasting trip ${trip.id} to driver ${driverUserId} (${broadcastState.currentIndex + 1}/${broadcastState.nearbyDrivers.length})`);
+
+            // Get connected drivers
+            const connectedDrivers = this.socketGateway.getConnectedDrivers();
+            const driverSocket = connectedDrivers.get(driverUserId);
+
+            if (!driverSocket) {
+                this.logger.warn(`Driver ${driverUserId} not connected, moving to next driver`);
+                broadcastState.currentIndex++;
+                await this.broadcastToNextDriver(trip, broadcastState);
                 return;
             }
 
@@ -559,30 +659,21 @@ export class TripsService {
                 expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // Support both formats
             };
 
-            this.logger.log(`📡 Broadcasting trip_support_broadcast to ${connectedDrivers.size} drivers for trip ${trip.id}`);
+            // Send to this specific driver only
+            this.socketGateway.sendToDriver(driverUserId, 'trip_support_broadcast', payload);
+            this.logger.log(`✅ Sent trip_support_broadcast to driver ${driverUserId} for trip ${trip.id}`);
 
-            connectedDrivers.forEach((socket, driverUserId) => {
-                this.socketGateway.sendToDriver(driverUserId, 'trip_support_broadcast', payload);
-            });
+            // Set timeout for 5 minutes - if no response, move to next driver
+            broadcastState.timer = setTimeout(async () => {
+                this.logger.warn(`Driver ${driverUserId} did not respond to trip ${trip.id} within 5 minutes, moving to next driver`);
+                broadcastState.currentIndex++;
+                await this.broadcastToNextDriver(trip, broadcastState);
+            }, 5 * 60 * 1000); // 5 minutes
 
-            const dispatcherUserId = trip.dispatcher_user_id;
-
-            if (!dispatcherUserId) {
-                this.logger.warn(`Skipping dispatcher notification for trip ${trip.id}: missing dispatcher_user_id`);
-            } else {
-                await this.notificationsService.createTripRequestNotification(
-                    dispatcherUserId,
-                    trip.id,
-                    trip.passenger_name || 'Walk-in Passenger',
-                    trip.pickup_address,
-                    trip.dropoff_address,
-                    (trip.estimated_fare_cents || 0) / 100,
-                );
-            }
-
-            this.socketGateway.broadcastToDrivers('trip:created', { trip });
         } catch (error) {
-            this.logger.error('Failed to broadcast dispatcher trip request:', error);
+            this.logger.error('Failed to broadcast to driver:', error);
+            broadcastState.currentIndex++;
+            await this.broadcastToNextDriver(trip, broadcastState);
         }
     }
 
@@ -635,6 +726,125 @@ export class TripsService {
         }, minutes * 60 * 1000);
 
         this.autoCancelTimers.set(tripId, timeout);
+    }
+
+    /**
+     * Accept a support trip and assign it to the driver
+     */
+    async acceptSupportTrip(tripId: string, driverUserId: string): Promise<{ success: boolean; trip?: any; error?: string }> {
+        const client = await this.postgresService.getClient();
+        
+        try {
+            await client.query('BEGIN');
+
+            // Cancel auto-cancel timer if exists
+            if (this.autoCancelTimers.has(tripId)) {
+                clearTimeout(this.autoCancelTimers.get(tripId)!);
+                this.autoCancelTimers.delete(tripId);
+                this.logger.log(`Cancelled auto-cancel timer for trip ${tripId}`);
+            }
+
+            // Cancel broadcast timer if exists
+            const broadcastState = this.tripBroadcasts.get(tripId);
+            if (broadcastState) {
+                if (broadcastState.timer) {
+                    clearTimeout(broadcastState.timer);
+                }
+                this.tripBroadcasts.delete(tripId);
+                this.logger.log(`Cancelled broadcast state for trip ${tripId}`);
+            }
+
+            // Get the trip and verify it's still available
+            const tripQuery = 'SELECT * FROM trips WHERE id = $1 FOR UPDATE';
+            const tripResult = await client.query(tripQuery, [tripId]);
+
+            if (tripResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                return { success: false, error: 'Trip not found' };
+            }
+
+            const trip = tripResult.rows[0];
+
+            // Check if trip is still in requested status and has no driver
+            if (trip.status !== 'requested') {
+                await client.query('ROLLBACK');
+                return { success: false, error: 'Trip is no longer available' };
+            }
+
+            if (trip.driver_id) {
+                await client.query('ROLLBACK');
+                return { success: false, error: 'Trip already assigned to another driver' };
+            }
+
+            // Update trip with driver assignment
+            const updateQuery = `
+                UPDATE trips
+                SET driver_id = $1,
+                    status = 'accepted',
+                    accepted_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = $2
+                RETURNING *
+            `;
+
+            const updateResult = await client.query(updateQuery, [driverUserId, tripId]);
+            const updatedTrip = updateResult.rows[0];
+
+            await client.query('COMMIT');
+
+            this.logger.log(`✅ Trip ${tripId} accepted by driver ${driverUserId}`);
+
+            return { success: true, trip: updatedTrip };
+
+        } catch (error) {
+            await client.query('ROLLBACK');
+            this.logger.error(`Error accepting support trip ${tripId}:`, error);
+            return { success: false, error: 'Failed to accept trip' };
+        } finally {
+            client.release();
+        }
+    }
+
+    /**
+     * Decline a support trip and move to next driver in sequence
+     */
+    async declineSupportTrip(tripId: string, driverUserId: string, reason?: string): Promise<void> {
+        try {
+            this.logger.log(`Driver ${driverUserId} declined trip ${tripId} (reason: ${reason})`);
+            
+            // Get broadcast state
+            const broadcastState = this.tripBroadcasts.get(tripId);
+            if (!broadcastState) {
+                this.logger.warn(`No broadcast state found for trip ${tripId}`);
+                return;
+            }
+
+            // Cancel current timer
+            if (broadcastState.timer) {
+                clearTimeout(broadcastState.timer);
+                broadcastState.timer = null;
+            }
+
+            // Move to next driver immediately
+            broadcastState.currentIndex++;
+            
+            // Get the trip to broadcast to next driver
+            const tripQuery = 'SELECT * FROM trips WHERE id = $1';
+            const tripResult = await this.postgresService.query(tripQuery, [tripId]);
+            
+            if (tripResult.rows.length === 0) {
+                this.logger.warn(`Trip ${tripId} not found for re-broadcast`);
+                this.tripBroadcasts.delete(tripId);
+                return;
+            }
+
+            const trip = tripResult.rows[0];
+            await this.broadcastToNextDriver(trip, broadcastState);
+            
+        } catch (error) {
+            this.logger.error(`Error declining support trip ${tripId}:`, error);
+            throw error;
+        }
     }
 
     async getActiveTrip(driverUserId: string) {

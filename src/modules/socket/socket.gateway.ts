@@ -8,11 +8,12 @@ import {
     MessageBody,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, forwardRef, Inject } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { UsersPostgresRepository } from '../database/repositories/users-postgres.repository';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { PostgresService } from '../database/postgres.service';
+import { TripsService } from '../trips/trips.service';
 
 interface AuthenticatedSocket extends Socket {
     userId: string;
@@ -38,6 +39,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         private usersRepository: UsersPostgresRepository,
         private driverProfilesRepository: DriverProfilesPostgresRepository,
         private postgresService: PostgresService,
+        @Inject(forwardRef(() => TripsService))
+        private tripsService: TripsService,
     ) { }
 
     async handleConnection(client: Socket) {
@@ -287,6 +290,50 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
             this.logger.debug(`Driver ${userId} location updated: ${lat}, ${lng}`);
 
+            // Check if driver has an accepted trip and calculate arrival
+            const driverProfile = await this.driverProfilesRepository.findByUserId(userId);
+            if (driverProfile && driverProfile.current_trip_id) {
+                // Get trip details
+                const tripQuery = 'SELECT * FROM trips WHERE id = $1 AND status = $2';
+                const tripResult = await this.postgresService.query(tripQuery, [
+                    driverProfile.current_trip_id,
+                    'accepted'
+                ]);
+
+                if (tripResult.rows.length > 0) {
+                    const trip = tripResult.rows[0];
+                    const pickupLat = trip.pickup_latitude;
+                    const pickupLng = trip.pickup_longitude;
+
+                    if (pickupLat && pickupLng) {
+                        // Calculate distance to pickup
+                        const distanceToPickup = this.calculateDistance(lat, lng, pickupLat, pickupLng);
+                        
+                        // Calculate bearing
+                        const bearing = this.calculateBearing(lat, lng, pickupLat, pickupLng);
+
+                        // Emit location with distance info to driver
+                        client.emit('trip:driver_location', {
+                            lat,
+                            lng,
+                            bearing,
+                            distanceToPickup,
+                            timestamp: new Date().toISOString()
+                        });
+
+                        // Check for arrival (within 200 meters)
+                        if (distanceToPickup < 200) {
+                            this.logger.log(`✅ Driver ${userId} has arrived at pickup (${distanceToPickup.toFixed(0)}m away)`);
+                            client.emit('driver:arrived', {
+                                tripId: trip.id,
+                                distanceToPickup,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                    }
+                }
+            }
+
             // Acknowledge location update
             client.emit('driver:location_acknowledged', {
                 timestamp: new Date().toISOString(),
@@ -311,6 +358,125 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             this.logger.error(`Error updating driver location:`, error);
             client.emit('error', { message: 'Failed to update location' });
         }
+    }
+
+    // ==========================================
+    // Support Trip Handlers
+    // ==========================================
+
+    @SubscribeMessage('trip_support_accept')
+    async handleSupportTripAccept(
+        @ConnectedSocket() client: AuthenticatedSocket,
+        @MessageBody() data: { tripId: string; passengerPhone?: string }
+    ) {
+        try {
+            const driverUserId = client.userId;
+            const { tripId } = data;
+
+            this.logger.log(`📞 Driver ${driverUserId} accepting support trip ${tripId}`);
+
+            // Call trips service to assign driver to trip
+            const result = await this.tripsService.acceptSupportTrip(tripId, driverUserId);
+
+            if (result.success) {
+                this.logger.log(`✅ Support trip ${tripId} accepted by driver ${driverUserId}`);
+                
+                // Emit success to the accepting driver
+                client.emit('trip_support_accepted', {
+                    tripId,
+                    trip: result.trip,
+                    message: 'Trip accepted successfully'
+                });
+
+                // Notify other drivers that this trip was taken
+                this.connectedDrivers.forEach((driverClient, userId) => {
+                    if (userId !== driverUserId) {
+                        driverClient.emit('trip_support_accepted_by_other', {
+                            tripId,
+                            message: 'This trip was accepted by another driver'
+                        });
+                    }
+                });
+
+            } else {
+                this.logger.warn(`❌ Failed to accept support trip ${tripId}: ${result.error}`);
+                client.emit('trip_support_accept_failed', {
+                    tripId,
+                    error: result.error || 'Failed to accept trip'
+                });
+            }
+
+        } catch (error) {
+            this.logger.error(`Error handling trip_support_accept:`, error);
+            client.emit('error', { message: 'Failed to accept trip' });
+        }
+    }
+
+    @SubscribeMessage('trip_support_decline')
+    async handleSupportTripDecline(
+        @ConnectedSocket() client: AuthenticatedSocket,
+        @MessageBody() data: { tripId: string; reason?: string; userInitiated?: boolean }
+    ) {
+        try {
+            const driverUserId = client.userId;
+            const { tripId, reason, userInitiated = true } = data;
+
+            this.logger.log(`📞 Driver ${driverUserId} declining support trip ${tripId} (reason: ${reason})`);
+
+            // Call trips service to handle decline and move to next driver
+            await this.tripsService.declineSupportTrip(tripId, driverUserId, reason);
+
+            // Acknowledge decline
+            client.emit('trip_support_declined', {
+                tripId,
+                message: 'Trip declined'
+            });
+
+            this.logger.log(`✅ Support trip ${tripId} declined by driver ${driverUserId}`);
+
+        } catch (error) {
+            this.logger.error(`Error handling trip_support_decline:`, error);
+            client.emit('error', { message: 'Failed to decline trip' });
+        }
+    }
+
+    // ==========================================
+    // Helper Methods - Distance & Bearing Calculations
+    // ==========================================
+
+    /**
+     * Calculate distance between two points using Haversine formula
+     * @returns Distance in meters
+     */
+    private calculateDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+        const R = 6371e3; // Earth radius in meters
+        const φ1 = (lat1 * Math.PI) / 180;
+        const φ2 = (lat2 * Math.PI) / 180;
+        const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+        const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+
+        const a =
+            Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // Distance in meters
+    }
+
+    /**
+     * Calculate bearing between two points
+     * @returns Bearing in degrees (0-360)
+     */
+    private calculateBearing(lat1: number, lng1: number, lat2: number, lng2: number): number {
+        const φ1 = (lat1 * Math.PI) / 180;
+        const φ2 = (lat2 * Math.PI) / 180;
+        const Δλ = ((lng2 - lng1) * Math.PI) / 180;
+
+        const y = Math.sin(Δλ) * Math.cos(φ2);
+        const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+        const θ = Math.atan2(y, x);
+
+        return ((θ * 180) / Math.PI + 360) % 360; // Normalize to 0-360
     }
 
     // ==========================================
