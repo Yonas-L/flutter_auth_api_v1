@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { TripsController } from './trips.controller';
@@ -8,7 +8,7 @@ import { DatabaseModule } from '../database/database.module';
 import { AuthPostgresModule } from '../auth/auth-postgres.module';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { VehiclesPostgresRepository } from '../database/repositories/vehicles-postgres.repository';
-import { SocketGateway } from '../socket/socket.gateway';
+import { SocketModule } from '../socket/socket.module';
 import { NotificationsModule } from '../../notifications/notifications.module';
 
 @Module({
@@ -16,6 +16,7 @@ import { NotificationsModule } from '../../notifications/notifications.module';
         DatabaseModule,
         NotificationsModule,
         AuthPostgresModule, // For JWT authentication
+        forwardRef(() => SocketModule), // Import SocketModule with forwardRef to resolve circular dependency
         JwtModule.registerAsync({
             inject: [ConfigService],
             useFactory: (configService: ConfigService) => ({
@@ -32,7 +33,6 @@ import { NotificationsModule } from '../../notifications/notifications.module';
         TripStatusSyncService,
         DriverProfilesPostgresRepository,
         VehiclesPostgresRepository,
-        SocketGateway,
     ],
     exports: [TripsService],
 })
