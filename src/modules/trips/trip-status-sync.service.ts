@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PostgresService } from '../database/postgres.service';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { SocketGateway } from '../socket/socket.gateway';
@@ -10,6 +10,7 @@ export class TripStatusSyncService {
     constructor(
         private readonly postgresService: PostgresService,
         private readonly driverProfilesRepository: DriverProfilesPostgresRepository,
+        @Inject(forwardRef(() => SocketGateway))
         private readonly socketGateway: SocketGateway,
     ) { }
 
