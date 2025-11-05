@@ -1,18 +1,45 @@
-import { Injectable, Logger, HttpException, HttpStatus } from '@nestjs/common';
+import { Injectable, Logger, HttpException, HttpStatus, Inject, forwardRef } from '@nestjs/common';
 import { PostgresService } from '../database/postgres.service';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { VehiclesPostgresRepository } from '../database/repositories/vehicles-postgres.repository';
 import { TripStatusSyncService } from './trip-status-sync.service';
+import { SocketGateway } from '../socket/socket.gateway';
+import { NotificationsService } from '../../notifications/notifications.service';
+
+interface DispatcherTripDto {
+    pickup_address: string;
+    dropoff_address: string;
+    pickup_latitude: number;
+    pickup_longitude: number;
+    dropoff_latitude: number;
+    dropoff_longitude: number;
+    trip_type?: string;
+    passenger_phone?: string;
+    passenger_name?: string;
+    vehicle_type_id?: number;
+    estimated_distance_km?: number;
+    estimated_duration_minutes?: number;
+    estimated_fare?: number;
+    trip_details?: {
+        passenger_name?: string;
+        special_instructions?: string;
+    };
+    package_description?: string;
+    special_instructions?: string;
+}
 
 @Injectable()
 export class TripsService {
     private readonly logger = new Logger(TripsService.name);
+    private autoCancelTimers: Map<string, NodeJS.Timeout> = new Map();
 
     constructor(
         private readonly postgresService: PostgresService,
         private readonly driverProfilesRepository: DriverProfilesPostgresRepository,
         private readonly vehiclesRepository: VehiclesPostgresRepository,
         private readonly tripStatusSyncService: TripStatusSyncService,
+        @Inject(forwardRef(() => SocketGateway)) private readonly socketGateway: SocketGateway,
+        @Inject(forwardRef(() => NotificationsService)) private readonly notificationsService: NotificationsService,
     ) { }
 
     async createTrip(driverUserId: string, createTripDto: any) {
@@ -278,6 +305,255 @@ export class TripsService {
         } finally {
             client.release();
         }
+    }
+
+    async createDispatcherTrip(dispatcherUserId: string, tripDto: DispatcherTripDto) {
+        const client = await this.postgresService.getClient();
+
+        try {
+            await client.query('BEGIN');
+
+            if (!tripDto.pickup_address || !tripDto.dropoff_address) {
+                throw new HttpException('Pickup and dropoff addresses are required', HttpStatus.BAD_REQUEST);
+            }
+
+            if (
+                !tripDto.pickup_latitude ||
+                !tripDto.pickup_longitude ||
+                !tripDto.dropoff_latitude ||
+                !tripDto.dropoff_longitude
+            ) {
+                throw new HttpException('Pickup and dropoff coordinates are required', HttpStatus.BAD_REQUEST);
+            }
+
+            let passengerId = null;
+
+            if (tripDto.passenger_phone) {
+                const existingUserQuery = 'SELECT id FROM users WHERE phone_number = $1';
+                const existingUserResult = await client.query(existingUserQuery, [tripDto.passenger_phone]);
+
+                if (existingUserResult.rows.length > 0) {
+                    passengerId = existingUserResult.rows[0].id;
+                } else {
+                    const createUserQuery = `
+                        INSERT INTO users (phone_number, full_name, user_type, is_phone_verified, is_active, created_at, updated_at)
+                        VALUES ($1, $2, 'passenger', true, true, NOW(), NOW())
+                        RETURNING id
+                    `;
+                    const newUserResult = await client.query(createUserQuery, [
+                        tripDto.passenger_phone,
+                        tripDto.passenger_name || tripDto.trip_details?.passenger_name || 'Passenger'
+                    ]);
+                    passengerId = newUserResult.rows[0].id;
+                }
+            }
+
+            if (!passengerId) {
+                const anonymousUserQuery = `
+                    INSERT INTO users (phone_number, full_name, user_type, is_phone_verified, is_active, created_at, updated_at)
+                    VALUES ($1, $2, 'passenger', false, true, NOW(), NOW())
+                    RETURNING id
+                `;
+                const anonymousUserResult = await client.query(anonymousUserQuery, [
+                    `dispatcher-${Date.now()}`,
+                    tripDto.passenger_name || tripDto.trip_details?.passenger_name || 'Walk-in Passenger'
+                ]);
+                passengerId = anonymousUserResult.rows[0].id;
+            }
+
+            const passengerProfileQuery = 'SELECT id FROM passenger_profiles WHERE user_id = $1';
+            const passengerProfileResult = await client.query(passengerProfileQuery, [passengerId]);
+            const passengerProfileId = passengerProfileResult.rows.length ? passengerProfileResult.rows[0].id : null;
+
+            const tripReference = `TRP-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+            const estimatedDurationMinutes = tripDto.estimated_duration_minutes ||
+                this.calculateEstimatedDuration(tripDto.estimated_distance_km || 0);
+
+            const tripQuery = `
+                INSERT INTO trips (
+                    passenger_id,
+                    passenger_profile_id,
+                    status,
+                    pickup_address,
+                    pickup_latitude,
+                    pickup_longitude,
+                    pickup_point,
+                    dropoff_address,
+                    dropoff_latitude,
+                    dropoff_longitude,
+                    dropoff_point,
+                    estimated_distance_km,
+                    estimated_duration_minutes,
+                    estimated_fare_cents,
+                    trip_type,
+                    passenger_count,
+                    payment_method,
+                    payment_status,
+                    request_timestamp,
+                    trip_reference,
+                    is_new_passenger,
+                    dispatcher_user_id,
+                    special_instructions
+                ) VALUES (
+                    $1, $2, $3, $4, $5, $6, ST_Point($7, $8)::point,
+                    $9, $10, $11, ST_Point($12, $13)::point, $14, $15, $16,
+                    $17, $18, $19, $20, NOW(), $21, $22, $23, $24
+                ) RETURNING *
+            `;
+
+            const tripValues = [
+                passengerId,
+                passengerProfileId,
+                'created',
+                tripDto.pickup_address,
+                tripDto.pickup_latitude,
+                tripDto.pickup_longitude,
+                tripDto.pickup_longitude,
+                tripDto.pickup_latitude,
+                tripDto.dropoff_address,
+                tripDto.dropoff_latitude,
+                tripDto.dropoff_longitude,
+                tripDto.dropoff_longitude,
+                tripDto.dropoff_latitude,
+                tripDto.estimated_distance_km || null,
+                estimatedDurationMinutes,
+                Math.round((tripDto.estimated_fare || 0) * 100),
+                tripDto.trip_type || 'standard',
+                1,
+                'cash',
+                'pending',
+                tripReference,
+                passengerProfileId ? false : true,
+                dispatcherUserId,
+                tripDto.special_instructions || tripDto.trip_details?.special_instructions || tripDto.package_description || null,
+            ];
+
+            const tripResult = await client.query(tripQuery, tripValues);
+            const trip = tripResult.rows[0];
+
+            await client.query('COMMIT');
+
+            this.logger.log(`Dispatcher trip created: ${trip.id}`);
+
+            await this.notifyAvailableDrivers(trip);
+            await this.scheduleAutoCancel(trip.id, 5);
+
+            return trip;
+        } catch (error) {
+            await client.query('ROLLBACK');
+            this.logger.error('Error creating dispatcher trip:', error);
+            throw error;
+        } finally {
+            client.release();
+        }
+    }
+
+    private async notifyAvailableDrivers(trip: any) {
+        try {
+            const connectedDrivers = this.socketGateway.getConnectedDrivers();
+
+            if (!connectedDrivers.size) {
+                this.logger.warn('No connected drivers to broadcast trip request');
+                return;
+            }
+
+            const payload = {
+                tripId: trip.id,
+                pickup: {
+                    address: trip.pickup_address,
+                    lat: trip.pickup_latitude,
+                    lng: trip.pickup_longitude,
+                },
+                dropoff: {
+                    address: trip.dropoff_address,
+                    lat: trip.dropoff_latitude,
+                    lng: trip.dropoff_longitude,
+                },
+                estimated_distance_km: trip.estimated_distance_km,
+                estimated_duration_minutes: trip.estimated_duration_minutes,
+                estimated_fare_cents: trip.estimated_fare_cents,
+                trip_type: trip.trip_type,
+                passenger_phone: trip.passenger_phone,
+                passenger_name: trip.passenger_name,
+                trip_reference: trip.trip_reference,
+                status: trip.status,
+                created_at: trip.created_at,
+            };
+
+            connectedDrivers.forEach((socket, driverUserId) => {
+                this.socketGateway.sendToDriver(driverUserId, 'trip:request', payload);
+            });
+
+            const dispatcherUserId = trip.dispatcher_user_id;
+
+            if (!dispatcherUserId) {
+                this.logger.warn(`Skipping dispatcher notification for trip ${trip.id}: missing dispatcher_user_id`);
+            } else {
+                await this.notificationsService.createTripRequestNotification(
+                    dispatcherUserId,
+                    trip.id,
+                    trip.passenger_name || 'Walk-in Passenger',
+                    trip.pickup_address,
+                    trip.dropoff_address,
+                    (trip.estimated_fare_cents || 0) / 100,
+                );
+            }
+
+            this.socketGateway.broadcastToDrivers('trip:created', { trip });
+        } catch (error) {
+            this.logger.error('Failed to broadcast dispatcher trip request:', error);
+        }
+    }
+
+    private scheduleAutoCancel(tripId: string, minutes: number) {
+        if (this.autoCancelTimers.has(tripId)) {
+            clearTimeout(this.autoCancelTimers.get(tripId)!);
+        }
+
+        const timeout = setTimeout(async () => {
+            try {
+                const cancelQuery = `
+                    UPDATE trips
+                    SET status = 'canceled',
+                        canceled_at = NOW(),
+                        cancel_reason = 'Auto-canceled: no driver accepted',
+                        updated_at = NOW()
+                    WHERE id = $1 AND status = 'created'
+                    RETURNING *
+                `;
+
+                const result = await this.postgresService.query(cancelQuery, [tripId]);
+
+                if (!result.rows.length) {
+                    return;
+                }
+
+                const trip = result.rows[0];
+                await this.notificationsService.create({
+                    user_id: trip.dispatcher_user_id,
+                    title: 'Trip canceled (no driver)',
+                    body: `Trip ${trip.trip_reference} was automatically canceled after 5 minutes without driver assignment.`,
+                    type: 'trip',
+                    notification_type: 'trip_update',
+                    notification_category: 'trip',
+                    reference_id: tripId,
+                    reference_type: 'trip',
+                    priority: 'normal',
+                    metadata: {
+                        trip_id: tripId,
+                        event_type: 'auto_canceled',
+                    },
+                });
+
+                this.socketGateway.broadcastTripStatusChange(tripId, trip.driver_id, 'canceled');
+            } catch (error) {
+                this.logger.error(`Failed to auto-cancel trip ${tripId}:`, error);
+            } finally {
+                this.autoCancelTimers.delete(tripId);
+            }
+        }, minutes * 60 * 1000);
+
+        this.autoCancelTimers.set(tripId, timeout);
     }
 
     async getActiveTrip(driverUserId: string) {
