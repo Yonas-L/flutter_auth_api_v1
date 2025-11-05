@@ -40,9 +40,12 @@ export class TripsController {
     ) {
         const allowedRoles = new Set(['super_admin', 'admin', 'customer_support']);
 
-        if (!allowedRoles.has(user.user_type)) {
+        // Support both user.user_type (DB entity) and user.userType (JWT strategy mapping)
+        const userType: any = (user as any)?.user_type ?? (user as any)?.userType;
+
+        if (!allowedRoles.has(userType)) {
             this.logger.warn(
-                `User ${user.id} attempted to create dispatcher trip without permission (type: ${user.user_type})`,
+                `User ${user?.id} attempted to create dispatcher trip without permission (type: ${userType})`,
             );
             throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
         }
