@@ -838,9 +838,37 @@ export class TripsService {
 
             await client.query('COMMIT');
 
+            // Enrich trip data with passenger info
+            let passengerPhone = updatedTrip.passenger_phone;
+            let passengerName = updatedTrip.passenger_name;
+            if (updatedTrip.passenger_id && (!passengerPhone || !passengerName)) {
+                const enrichClient = await this.postgresService.getClient();
+                try {
+                    const userQuery = 'SELECT phone_number, full_name FROM users WHERE id = $1';
+                    const userResult = await enrichClient.query(userQuery, [updatedTrip.passenger_id]);
+                    if (userResult.rows.length > 0) {
+                        passengerPhone = passengerPhone || userResult.rows[0].phone_number;
+                        passengerName = passengerName || userResult.rows[0].full_name || 'Walk-in Passenger';
+                    }
+                } catch (error) {
+                    this.logger.warn(`Could not fetch passenger info for trip ${tripId}: ${error}`);
+                } finally {
+                    enrichClient.release();
+                }
+            }
+
+            // Enrich trip object with passenger info
+            const enrichedTrip = {
+                ...updatedTrip,
+                passenger_phone: passengerPhone || '',
+                passengerPhone: passengerPhone || '', // Support both formats
+                passenger_name: passengerName || 'Walk-in Passenger',
+                passengerName: passengerName || 'Walk-in Passenger', // Support both formats
+            };
+
             this.logger.log(`✅ Trip ${tripId} accepted by driver ${driverUserId}`);
 
-            return { success: true, trip: updatedTrip };
+            return { success: true, trip: enrichedTrip };
 
         } catch (error) {
             await client.query('ROLLBACK');
