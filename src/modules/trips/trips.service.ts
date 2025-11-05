@@ -6,7 +6,7 @@ import { TripStatusSyncService } from './trip-status-sync.service';
 import { SocketGateway } from '../socket/socket.gateway';
 import { NotificationsService } from '../../notifications/notifications.service';
 
-interface DispatcherTripDto {
+export interface DispatcherTripDto {
     pickup_address: string;
     dropoff_address: string;
     pickup_latitude: number;
