@@ -15,7 +15,9 @@ export class JwtPostgresStrategy extends PassportStrategy(Strategy, 'jwt-postgre
         super({
             jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
             ignoreExpiration: false,
-            secretOrKey: configService.get('JWT_ACCESS_SECRET') || 'fallback-secret',
+            secretOrKey: configService.get('JWT_ACCESS_SECRET')
+                || configService.get('JWT_SECRET')
+                || 'fallback-secret',
         });
     }
 
@@ -24,7 +26,7 @@ export class JwtPostgresStrategy extends PassportStrategy(Strategy, 'jwt-postgre
             this.logger.log(`🔐 Validating JWT token for user: ${payload.sub}`);
 
             // Extract user ID from payload
-            const userId = payload.sub;
+            const userId = payload.sub || payload.id;
             if (!userId) {
                 throw new UnauthorizedException('Invalid token: missing user ID');
             }
