@@ -1004,10 +1004,10 @@ export class TripsService {
             const trip = tripResult.rows[0];
 
             // Update driver pickup status from 'created' to 'accepted' for driver-initiated trips
+            // Note: driver_pickups table may not have updated_at column, so we skip it
             const pickupQuery = `
         UPDATE driver_pickups 
-        SET status = 'accepted',
-            updated_at = NOW()
+        SET status = 'accepted'
         WHERE driver_id = $1 AND status = 'created'
         RETURNING *
       `;
