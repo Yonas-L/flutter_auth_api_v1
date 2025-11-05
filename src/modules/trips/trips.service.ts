@@ -969,20 +969,36 @@ export class TripsService {
                 throw new HttpException('Driver profile not found', HttpStatus.NOT_FOUND);
             }
 
-            // For driver-initiated trips, the trip is already in_progress, just update timestamps
+            // Check if trip exists and is in a valid status to start (accepted or in_progress)
+            const checkTripQuery = `
+                SELECT * FROM trips 
+                WHERE id = $1 AND driver_id = $2 AND status IN ('accepted', 'in_progress')
+            `;
+            const checkResult = await client.query(checkTripQuery, [tripId, driverProfile.id]);
+
+            if (checkResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                throw new HttpException('Trip not found or not in accepted/in_progress status', HttpStatus.NOT_FOUND);
+            }
+
+            const existingTrip = checkResult.rows[0];
+
+            // Update trip: change status from 'accepted' to 'in_progress' and set timestamps
             const tripQuery = `
-        UPDATE trips 
-        SET started_at = NOW(),
-            trip_started_at = NOW(),
-            updated_at = NOW()
-        WHERE id = $1 AND driver_id = $2 AND status = 'in_progress'
-        RETURNING *
-      `;
+                UPDATE trips 
+                SET status = 'in_progress',
+                    started_at = NOW(),
+                    trip_started_at = NOW(),
+                    updated_at = NOW()
+                WHERE id = $1 AND driver_id = $2 AND status IN ('accepted', 'in_progress')
+                RETURNING *
+            `;
 
             const tripResult = await client.query(tripQuery, [tripId, driverProfile.id]);
 
             if (tripResult.rows.length === 0) {
-                throw new HttpException('Trip not found or not in progress status', HttpStatus.NOT_FOUND);
+                await client.query('ROLLBACK');
+                throw new HttpException('Trip not found or not in accepted/in_progress status', HttpStatus.NOT_FOUND);
             }
 
             const trip = tripResult.rows[0];
@@ -1000,7 +1016,15 @@ export class TripsService {
 
             await client.query('COMMIT');
 
-            this.logger.log(`Trip started: ${tripId}`);
+            // Sync trip status change with driver profile (status changed from 'accepted' to 'in_progress')
+            try {
+                await this.tripStatusSyncService.syncTripStatus(tripId, 'in_progress', driverProfile.id);
+            } catch (syncError) {
+                this.logger.warn(`Warning: Failed to sync trip status for ${tripId}:`, syncError);
+                // Don't fail the entire operation if sync fails
+            }
+
+            this.logger.log(`✅ Trip started: ${tripId}, status changed from '${existingTrip.status}' to 'in_progress'`);
             return trip;
 
         } catch (error) {
@@ -1115,22 +1139,46 @@ export class TripsService {
 
             this.logger.log(`💰 Final fare: ${finalFare}, Driver earnings: ${driverEarnings}, Commission: ${commission}`);
 
+            // First check the current trip status for better error messages
+            const checkTripQuery = `
+                SELECT id, status, driver_id FROM trips WHERE id = $1
+            `;
+            const checkTripResult = await client.query(checkTripQuery, [tripId]);
+
+            if (checkTripResult.rows.length === 0) {
+                await client.query('ROLLBACK');
+                throw new HttpException(`Trip ${tripId} not found`, HttpStatus.NOT_FOUND);
+            }
+
+            const currentTrip = checkTripResult.rows[0];
+
+            if (currentTrip.driver_id !== driverProfile.id) {
+                await client.query('ROLLBACK');
+                throw new HttpException('Trip does not belong to this driver', HttpStatus.FORBIDDEN);
+            }
+
+            if (currentTrip.status !== 'in_progress') {
+                await client.query('ROLLBACK');
+                this.logger.warn(`⚠️ Cannot complete trip ${tripId}: current status is '${currentTrip.status}', expected 'in_progress'`);
+                throw new HttpException(`Trip is not in progress (current status: ${currentTrip.status})`, HttpStatus.BAD_REQUEST);
+            }
+
             // Update trip status
             const tripQuery = `
-        UPDATE trips 
-        SET status = 'completed', 
-            completed_at = NOW(),
-            trip_completed_at = NOW(),
-            final_fare_cents = $3,
-            actual_distance_km = $4,
-            actual_duration_minutes = $5,
-            driver_earnings_cents = $6,
-            commission_cents = $7,
-            payment_status = 'completed',
-            updated_at = NOW()
-        WHERE id = $1 AND driver_id = $2 AND status = 'in_progress'
-        RETURNING *
-      `;
+                UPDATE trips 
+                SET status = 'completed', 
+                    completed_at = NOW(),
+                    trip_completed_at = NOW(),
+                    final_fare_cents = $3,
+                    actual_distance_km = $4,
+                    actual_duration_minutes = $5,
+                    driver_earnings_cents = $6,
+                    commission_cents = $7,
+                    payment_status = 'completed',
+                    updated_at = NOW()
+                WHERE id = $1 AND driver_id = $2 AND status = 'in_progress'
+                RETURNING *
+            `;
 
             const tripResult = await client.query(tripQuery, [
                 tripId,
@@ -1143,7 +1191,9 @@ export class TripsService {
             ]);
 
             if (tripResult.rows.length === 0) {
-                throw new HttpException('Trip not found or not in progress', HttpStatus.NOT_FOUND);
+                await client.query('ROLLBACK');
+                this.logger.error(`❌ Failed to update trip ${tripId} to completed - trip may have been modified`);
+                throw new HttpException('Trip not found or not in progress status', HttpStatus.NOT_FOUND);
             }
 
             const trip = tripResult.rows[0];
