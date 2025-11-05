@@ -407,7 +407,7 @@ export class TripsService {
             const tripValues = [
                 passengerId,
                 passengerProfileId,
-                'created',
+                'requested',
                 tripDto.pickup_address,
                 tripDto.pickup_latitude,
                 tripDto.pickup_longitude,
