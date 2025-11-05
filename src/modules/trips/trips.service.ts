@@ -497,7 +497,8 @@ export class TripsService {
     private async findNearbyDrivers(pickupLat: number, pickupLng: number, radiusKm: number = 10): Promise<string[]> {
         try {
             // Extract coordinates from PostgreSQL POINT type and convert to PostGIS geography
-            // POINT type stores (lng, lat) as (x, y)
+            // PostgreSQL POINT type stores (lng, lat) as (x, y)
+            // Use array indexing [0] for x (longitude) and [1] for y (latitude)
             const query = `
                 SELECT dp.user_id
                 FROM driver_profiles dp
@@ -506,12 +507,12 @@ export class TripsService {
                   AND dp.last_known_location IS NOT NULL
                   AND dp.last_location_update > NOW() - INTERVAL '5 minutes'
                   AND ST_DWithin(
-                      ST_SetSRID(ST_MakePoint((dp.last_known_location).x, (dp.last_known_location).y), 4326)::geography,
+                      ST_SetSRID(ST_MakePoint((dp.last_known_location)[0], (dp.last_known_location)[1]), 4326)::geography,
                       ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
                       $3 * 1000
                   )
                 ORDER BY ST_Distance(
-                    ST_SetSRID(ST_MakePoint((dp.last_known_location).x, (dp.last_known_location).y), 4326)::geography,
+                    ST_SetSRID(ST_MakePoint((dp.last_known_location)[0], (dp.last_known_location)[1]), 4326)::geography,
                     ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
                 )
                 LIMIT 20
@@ -521,7 +522,7 @@ export class TripsService {
             const driverUserIds = result.rows.map(row => row.user_id);
 
             this.logger.log(`Found ${driverUserIds.length} nearby drivers within ${radiusKm}km of (${pickupLat}, ${pickupLng})`);
-            
+
             return driverUserIds;
         } catch (error) {
             this.logger.error('Error finding nearby drivers:', error);
@@ -554,7 +555,8 @@ export class TripsService {
             );
 
             if (nearbyDrivers.length === 0) {
-                this.logger.warn(`No nearby drivers found for trip ${trip.id}`);
+                this.logger.warn(`No nearby drivers found for trip ${trip.id} - trip will be auto-canceled after 10 minutes if no driver accepts`);
+                // Auto-cancel timer is already scheduled in createDispatcherTrip, so trip will be canceled automatically
                 return;
             }
 
@@ -684,41 +686,60 @@ export class TripsService {
             clearTimeout(this.autoCancelTimers.get(tripId)!);
         }
 
+        this.logger.log(`Scheduling auto-cancel for trip ${tripId} after ${minutes} minutes`);
+
         const timeout = setTimeout(async () => {
             try {
+                // Cancel trip if it's still in 'requested' or 'created' status (no driver assigned)
                 const cancelQuery = `
                     UPDATE trips
                     SET status = 'canceled',
                         canceled_at = NOW(),
-                        cancel_reason = 'Auto-canceled: no driver accepted',
+                        cancel_reason = 'Auto-canceled: no driver accepted within time limit',
                         updated_at = NOW()
-                    WHERE id = $1 AND status = 'created'
+                    WHERE id = $1 AND status IN ('requested', 'created') AND driver_id IS NULL
                     RETURNING *
                 `;
 
                 const result = await this.postgresService.query(cancelQuery, [tripId]);
 
                 if (!result.rows.length) {
+                    this.logger.log(`Trip ${tripId} was already assigned, canceled, or completed - skipping auto-cancel`);
                     return;
                 }
 
                 const trip = result.rows[0];
-                await this.notificationsService.create({
-                    user_id: trip.dispatcher_user_id,
-                    title: 'Trip canceled (no driver)',
-                    body: `Trip ${trip.trip_reference} was automatically canceled after 5 minutes without driver assignment.`,
-                    type: 'trip',
-                    notification_type: 'trip_update',
-                    notification_category: 'trip',
-                    reference_id: tripId,
-                    reference_type: 'trip',
-                    priority: 'normal',
-                    metadata: {
-                        trip_id: tripId,
-                        event_type: 'auto_canceled',
-                    },
-                });
+                this.logger.log(`Auto-canceling trip ${tripId} after ${minutes} minutes without driver assignment`);
 
+                // Clean up broadcast state if exists
+                if (this.tripBroadcasts.has(tripId)) {
+                    const broadcastState = this.tripBroadcasts.get(tripId);
+                    if (broadcastState?.timer) {
+                        clearTimeout(broadcastState.timer);
+                    }
+                    this.tripBroadcasts.delete(tripId);
+                }
+
+                // Send notification to dispatcher if exists
+                if (trip.dispatcher_user_id) {
+                    await this.notificationsService.create({
+                        user_id: trip.dispatcher_user_id,
+                        title: 'Trip canceled (no driver)',
+                        body: `Trip ${trip.trip_reference} was automatically canceled after ${minutes} minutes without driver assignment.`,
+                        type: 'trip',
+                        notification_type: 'trip_update',
+                        notification_category: 'trip',
+                        reference_id: tripId,
+                        reference_type: 'trip',
+                        priority: 'normal',
+                        metadata: {
+                            trip_id: tripId,
+                            event_type: 'auto_canceled',
+                        },
+                    });
+                }
+
+                // Broadcast status change
                 this.socketGateway.broadcastTripStatusChange(tripId, trip.driver_id, 'canceled');
             } catch (error) {
                 this.logger.error(`Failed to auto-cancel trip ${tripId}:`, error);
@@ -735,7 +756,7 @@ export class TripsService {
      */
     async acceptSupportTrip(tripId: string, driverUserId: string): Promise<{ success: boolean; trip?: any; error?: string }> {
         const client = await this.postgresService.getClient();
-        
+
         try {
             await client.query('BEGIN');
 
@@ -813,7 +834,7 @@ export class TripsService {
     async declineSupportTrip(tripId: string, driverUserId: string, reason?: string): Promise<void> {
         try {
             this.logger.log(`Driver ${driverUserId} declined trip ${tripId} (reason: ${reason})`);
-            
+
             // Get broadcast state
             const broadcastState = this.tripBroadcasts.get(tripId);
             if (!broadcastState) {
@@ -829,11 +850,11 @@ export class TripsService {
 
             // Move to next driver immediately
             broadcastState.currentIndex++;
-            
+
             // Get the trip to broadcast to next driver
             const tripQuery = 'SELECT * FROM trips WHERE id = $1';
             const tripResult = await this.postgresService.query(tripQuery, [tripId]);
-            
+
             if (tripResult.rows.length === 0) {
                 this.logger.warn(`Trip ${tripId} not found for re-broadcast`);
                 this.tripBroadcasts.delete(tripId);
@@ -842,7 +863,7 @@ export class TripsService {
 
             const trip = tripResult.rows[0];
             await this.broadcastToNextDriver(trip, broadcastState);
-            
+
         } catch (error) {
             this.logger.error(`Error declining support trip ${tripId}:`, error);
             throw error;
