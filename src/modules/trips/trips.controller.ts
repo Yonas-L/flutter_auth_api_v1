@@ -33,6 +33,41 @@ export class TripsController {
         }
     }
 
+    @Post('dispatcher')
+    async createDispatcherTrip(
+        @CurrentUser() user: User,
+        @Body() dispatcherTripDto: any,
+    ) {
+        const allowedRoles = new Set(['super_admin', 'admin', 'customer_support']);
+
+        if (!allowedRoles.has(user.user_type)) {
+            this.logger.warn(
+                `User ${user.id} attempted to create dispatcher trip without permission (type: ${user.user_type})`,
+            );
+            throw new HttpException('Forbidden', HttpStatus.FORBIDDEN);
+        }
+
+        try {
+            const trip = await this.tripsService.createDispatcherTrip(user.id, dispatcherTripDto);
+
+            return {
+                success: true,
+                trip,
+                message: 'Dispatcher trip created successfully',
+            };
+        } catch (error) {
+            if (error instanceof HttpException) {
+                throw error;
+            }
+
+            this.logger.error(`Error creating dispatcher trip for user ${user.id}:`, error);
+            throw new HttpException(
+                error?.message || 'Failed to create dispatcher trip',
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
     @Get('history')
     async getTripHistory(
         @CurrentUser() user: User,
