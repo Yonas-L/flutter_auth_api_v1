@@ -7,6 +7,7 @@ import { SupabaseAuthService } from './supabase-auth.service';
 import { AfroMessageService } from './afro-message.service';
 import { DatabaseModule } from '../database/database.module';
 import { AuthPostgresService } from '../auth/auth-postgres.service';
+import { SimpleAuthService } from '../auth/simple-auth.service';
 import { UsersModule } from '../users/users.module';
 import { MailModule } from '../mail/mail.module';
 import { OtpEmailController } from './otp-email.controller';
@@ -27,7 +28,7 @@ import { OtpEmailController } from './otp-email.controller';
     forwardRef(() => UsersModule),
   ],
   controllers: [OtpController, OtpEmailController],
-  providers: [OtpService, SupabaseAuthService, AfroMessageService, AuthPostgresService],
+  providers: [OtpService, SupabaseAuthService, AfroMessageService, AuthPostgresService, SimpleAuthService],
   exports: [OtpService, SupabaseAuthService, AfroMessageService, AuthPostgresService],
 })
 export class OtpModule { }
