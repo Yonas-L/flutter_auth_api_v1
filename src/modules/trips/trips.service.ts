@@ -614,19 +614,16 @@ export class TripsService {
                 nearbyDrivers = await this.findNearbyDrivers(
                     trip.pickup_latitude,
                     trip.pickup_longitude,
-                    1.5, // 1.5km radius for vehicle type matching
+                    2, // 2km radius for vehicle type matching
                     vehicleTypeId
                 );
-            }
-
-            // If no drivers found with matching vehicle type, or no vehicle type specified,
-            // expand to all vehicle types immediately
-            if (nearbyDrivers.length === 0) {
-                this.logger.log(`⚠️ No drivers found with matching vehicle type${vehicleTypeId ? ` (${vehicleTypeId})` : ''}, expanding to all vehicle types`);
+            } else {
+                // No vehicle type specified - search all vehicle types immediately
+                this.logger.log(`🔍 No vehicle type specified - searching all vehicle types for trip ${trip.id}`);
                 nearbyDrivers = await this.findNearbyDrivers(
                     trip.pickup_latitude,
                     trip.pickup_longitude,
-                    1.5, // 1.5km radius for fallback
+                    2, // 2km radius
                     undefined // No vehicle type filter
                 );
             }
@@ -693,6 +690,7 @@ export class TripsService {
             }
 
             // Initialize broadcast state
+            // hasExpandedToAllTypes is true only if no vehicle type was specified (already searching all types)
             const broadcastState: BroadcastState = {
                 tripId: trip.id,
                 nearbyDrivers,
@@ -701,13 +699,15 @@ export class TripsService {
                 timer: null,
                 vehicleTypeTimer: null,
                 autoCancelTimer: null,
-                hasExpandedToAllTypes: !vehicleTypeId || nearbyDrivers.length === 0, // Already expanded if no vehicle type or no matches
+                hasExpandedToAllTypes: !vehicleTypeId, // Only expanded if no vehicle type was specified
             };
 
             this.tripBroadcasts.set(trip.id, broadcastState);
 
-            // Set up auto-cancel timer for 3 minutes total (if already expanded, set for 2 minutes from now)
-            const autoCancelDelay = broadcastState.hasExpandedToAllTypes ? 2 * 60 * 1000 : 3 * 60 * 1000;
+            // Set up auto-cancel timer for 3 minutes total
+            // If vehicle type was specified, we'll expand after 1 minute, so auto-cancel is 3 minutes total
+            // If no vehicle type was specified, we're already searching all types, so auto-cancel is 3 minutes from now
+            const autoCancelDelay = 3 * 60 * 1000; // Always 3 minutes total
             broadcastState.autoCancelTimer = setTimeout(async () => {
                 // Check if trip was already accepted
                 const currentState = this.tripBroadcasts.get(trip.id);
@@ -784,8 +784,9 @@ export class TripsService {
                 }
             }, autoCancelDelay);
 
-            // If we have vehicle type filtering and found drivers, set up 1-minute timer to expand
-            if (vehicleTypeId && nearbyDrivers.length > 0 && !broadcastState.hasExpandedToAllTypes) {
+            // If we have vehicle type filtering, set up 1-minute timer to expand to all vehicle types
+            // This applies whether or not matching vehicle type drivers were found
+            if (vehicleTypeId && !broadcastState.hasExpandedToAllTypes) {
                 this.logger.log(`⏱️ Setting 1-minute timer to expand to all vehicle types if no acceptance for trip ${trip.id}`);
                 broadcastState.vehicleTypeTimer = setTimeout(async () => {
                     // Check if trip was already accepted
@@ -804,13 +805,13 @@ export class TripsService {
                         return;
                     }
 
-                    this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 1.5km`);
+                    this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 2km`);
 
-                    // Find all drivers within 1.5km (any vehicle type)
+                    // Find all drivers within 2km (any vehicle type)
                     const allTypeDrivers = await this.findNearbyDrivers(
                         trip.pickup_latitude,
                         trip.pickup_longitude,
-                        1.5, // 1.5km radius
+                        2, // 2km radius
                         undefined // No vehicle type filter
                     );
 
@@ -832,7 +833,7 @@ export class TripsService {
                             this.logger.log(`No additional drivers found when expanding to all vehicle types`);
                         }
                     } else {
-                        this.logger.log(`No drivers found within 1.5km when expanding to all vehicle types`);
+                        this.logger.log(`No drivers found within 2km when expanding to all vehicle types`);
                     }
                 }, 60 * 1000); // 1 minute
             }
