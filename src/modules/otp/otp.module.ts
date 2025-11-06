@@ -8,10 +8,13 @@ import { AfroMessageService } from './afro-message.service';
 import { DatabaseModule } from '../database/database.module';
 import { AuthPostgresService } from '../auth/auth-postgres.service';
 import { UsersModule } from '../users/users.module';
+import { MailModule } from '../mail/mail.module';
+import { OtpEmailController } from './otp-email.controller';
 
 @Module({
   imports: [
     DatabaseModule,
+    MailModule,
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
@@ -23,7 +26,7 @@ import { UsersModule } from '../users/users.module';
     }),
     forwardRef(() => UsersModule),
   ],
-  controllers: [OtpController],
+  controllers: [OtpController, OtpEmailController],
   providers: [OtpService, SupabaseAuthService, AfroMessageService, AuthPostgresService],
   exports: [OtpService, SupabaseAuthService, AfroMessageService, AuthPostgresService],
 })

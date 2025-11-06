@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { OtpPostgresRepository } from '../database/repositories/otp-postgres.repository';
 import { AfroMessageService } from './afro-message.service';
+import { MailService } from '../mail/mail.service';
 import * as bcrypt from 'bcrypt';
 
 @Injectable()
@@ -9,7 +10,8 @@ export class OtpService {
 
   constructor(
     private readonly otpRepository: OtpPostgresRepository,
-    private readonly afroMessageService: AfroMessageService
+    private readonly afroMessageService: AfroMessageService,
+    private readonly mailService: MailService
   ) { }
 
   async generateOtp(): Promise<string> {
@@ -240,6 +242,107 @@ export class OtpService {
       return deletedCount;
     } catch (error) {
       this.logger.error('Error cleaning up expired OTPs:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create OTP for email address
+   */
+  async createOtpForEmail(
+    email: string,
+    expiresInMinutes: number = 10,
+    purpose: string = 'login'
+  ): Promise<any> {
+    try {
+      this.logger.log(`📧 Creating email OTP for: ${email}`);
+
+      // Clean up any existing OTPs for this email and purpose
+      const existingCount = await this.otpRepository.deleteAllForPhoneAndPurpose(email, purpose);
+      if (existingCount > 0) {
+        this.logger.log(`🧹 Cleaned up ${existingCount} existing OTP(s) for ${email} with purpose ${purpose}`);
+      }
+
+      // Generate OTP code
+      const otpCode = await this.generateOtp();
+
+      // Store OTP in database (reuse phone_number field for email)
+      const expiresAt = new Date();
+      expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
+
+      const otpCodeRecord = await this.otpRepository.create({
+        phone_number: email, // Store email in phone_number field
+        code_hash: otpCode,
+        purpose: purpose as any,
+        expires_at: expiresAt.toISOString(),
+        max_attempts: 3,
+      });
+
+      // Send OTP via email
+      await this.mailService.sendOtp(email, otpCode);
+
+      this.logger.log(`📝 Email OTP stored in database for ${email}, expires at ${expiresAt.toISOString()}`);
+      console.log(`🔐 EMAIL OTP CODE FOR TESTING: ${otpCode}`);
+
+      return {
+        id: otpCodeRecord.id,
+        key: email,
+        code: otpCode,
+        codeHash: otpCode,
+        expiresAt: otpCodeRecord.expires_at,
+        attempts: otpCodeRecord.attempts,
+        maxAttempts: otpCodeRecord.max_attempts,
+        createdAt: otpCodeRecord.created_at,
+      };
+    } catch (error) {
+      this.logger.error(`Error creating email OTP for ${email}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Verify OTP for email address
+   */
+  async verifyOtpForEmail(email: string, code: string, purpose: string = 'login'): Promise<{ valid: boolean; message?: string }> {
+    try {
+      this.logger.log(`🔍 Verifying email OTP for ${email} with code ${code}`);
+
+      // Find active OTP (reuse phone_number field for email)
+      const otpRecord = await this.otpRepository.findValidOtp(email, purpose);
+      this.logger.log(`📋 OTP record found for ${email}:`, otpRecord ? 'YES' : 'NO');
+
+      if (!otpRecord) {
+        return { valid: false, message: 'OTP not found or expired' };
+      }
+
+      // Check if max attempts exceeded
+      if (otpRecord.attempts >= otpRecord.max_attempts) {
+        this.logger.warn(`🚫 Max attempts exceeded for ${email}`);
+        return { valid: false, message: 'Maximum attempts exceeded' };
+      }
+
+      // Increment attempts
+      await this.otpRepository.incrementAttempts(otpRecord.id);
+
+      // Verify OTP against stored code
+      const isValidCode = otpRecord.code_hash === code;
+
+      this.logger.log(`✅ Email OTP verification result for ${email}: ${isValidCode}`);
+
+      if (isValidCode) {
+        // Mark as used first (for audit trail)
+        await this.otpRepository.markAsUsed(otpRecord.id);
+
+        // Delete the OTP after successful verification (security best practice)
+        await this.otpRepository.delete(otpRecord.id);
+
+        this.logger.log(`🔐 Email OTP successfully verified and deleted for ${email}`);
+        return { valid: true };
+      }
+
+      return { valid: false, message: 'Invalid OTP code' };
+    } catch (error) {
+      this.logger.error(`Error verifying email OTP for ${email}:`, error);
       throw error;
     }
   }

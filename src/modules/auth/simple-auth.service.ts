@@ -82,6 +82,52 @@ export class SimpleAuthService {
         }
     }
 
+    async authenticateUserByEmail(email: string): Promise<AuthResult> {
+        this.logger.log(`🔍 Authenticating user by email: ${email}`);
+
+        try {
+            // Find existing user by email
+            this.logger.log(`🔍 Looking for existing user with email: ${email}`);
+            let user = await this.usersRepository.findByEmail(email.toLowerCase());
+            this.logger.log(`👤 User lookup result: ${user ? `Found user ${user.id}` : 'No existing user found'}`);
+
+            if (!user) {
+                // New user - create basic user record with email
+                this.logger.log(`👤 Creating new user for email: ${email}`);
+                try {
+                    user = await this.usersRepository.create({
+                        email: email.toLowerCase(),
+                        user_type: 'driver',
+                        is_email_verified: true,
+                        is_active: true,
+                        status: 'pending_verification',
+                    });
+                    this.logger.log(`✅ User created successfully: ${user.id} for email: ${email}`);
+                } catch (createError) {
+                    this.logger.error(`❌ Failed to create user for ${email}:`, createError);
+                    throw new Error(`Failed to create user: ${createError.message}`);
+                }
+
+                // New user should go to registration
+                return this.generateAuthResult(user, 'register-1');
+            }
+
+            // Update last login
+            await this.usersRepository.updateLastLogin(user.id);
+
+            // Determine redirect based on driver profile status
+            const redirectTo = await this.determineRedirection(user.id);
+
+            this.logger.log(`✅ User authenticated: ${user.id}, redirecting to: ${redirectTo}`);
+
+            return this.generateAuthResult(user, redirectTo);
+
+        } catch (error) {
+            this.logger.error(`❌ Authentication failed for ${email}:`, error);
+            throw error;
+        }
+    }
+
     private async determineRedirection(userId: string): Promise<string> {
         try {
             // First check the user's status from the users table
