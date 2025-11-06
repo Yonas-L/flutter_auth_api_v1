@@ -712,30 +712,27 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         userId: string,
         message: string,
         createdAt: Date,
+        userType?: string,
     ) {
         try {
-            this.logger.log(`📡 Broadcasting ticket response added: ${responseId} to ticket ${ticketId}`);
+            this.logger.log(`📡 Broadcasting ticket response added: ${responseId} to ticket ${ticketId} by user type: ${userType}`);
 
-            // Broadcast to ticket room
-            this.server.to(`ticket:${ticketId}`).emit('ticket:response_added', {
+            const eventData = {
                 ticketId,
                 responseId,
                 userId,
                 message,
+                userType, // Include user_type to identify driver vs support responses
                 createdAt: createdAt.toISOString(),
                 timestamp: new Date().toISOString(),
-            });
+            };
+
+            // Broadcast to ticket room
+            this.server.to(`ticket:${ticketId}`).emit('ticket:response_added', eventData);
 
             // Broadcast to dashboard clients
             this.dashboardClients.forEach((dashboardClient) => {
-                dashboardClient.emit('ticket:response_added', {
-                    ticketId,
-                    responseId,
-                    userId,
-                    message,
-                    createdAt: createdAt.toISOString(),
-                    timestamp: new Date().toISOString(),
-                });
+                dashboardClient.emit('ticket:response_added', eventData);
             });
 
             this.logger.log(`📡 Broadcasted ticket response added to ticket room and ${this.dashboardClients.size} dashboard clients`);

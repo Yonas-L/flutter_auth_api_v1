@@ -85,14 +85,35 @@ export class SupportTicketsService {
                 RETURNING *
             `;
 
-            await this.postgresService.query(responseQuery, [
+            const initialResponseResult = await this.postgresService.query(responseQuery, [
                 ticket.id,
                 userId,
                 message,
             ]);
 
+            const initialResponse = initialResponseResult.rows[0];
+
+            // Get user info to include in socket event
+            const userQuery = `SELECT user_type FROM users WHERE id = $1`;
+            const userResult = await this.postgresService.query(userQuery, [userId]);
+            const userType = userResult.rows[0]?.user_type;
+
             // Emit socket event for real-time updates
             this.socketGateway.broadcastTicketCreated(ticket.id, userId);
+
+            // Also emit ticket:response_added for the initial message (so unread count updates)
+            // This ensures the unread messages count updates when a driver creates a ticket
+            if (userType && !['admin', 'customer_support', 'super_admin'].includes(userType)) {
+                // Driver created ticket - broadcast the initial message response
+                this.socketGateway.broadcastTicketResponseAdded(
+                    ticket.id,
+                    initialResponse.id,
+                    userId,
+                    message,
+                    new Date(),
+                    userType,
+                );
+            }
 
             this.logger.log(`Ticket created: ${ticket.id} with initial message`);
             return ticket;
@@ -581,13 +602,14 @@ export class SupportTicketsService {
             const userResult = await this.postgresService.query(userQuery, [userId]);
             const user = userResult.rows[0];
 
-            // Emit socket event
+            // Emit socket event (include user_type so frontend can determine if it's a driver response)
             this.socketGateway.broadcastTicketResponseAdded(
                 ticketId,
                 response.id,
                 userId,
                 addResponseDto.message,
                 new Date(),
+                user?.user_type, // Include user_type in the event
             );
 
             // Mark as read if the response is from the ticket owner viewing their own ticket
