@@ -411,10 +411,10 @@ export class TripsService {
 
             // For delivery trips, use recipient_name; for standard trips, use passenger_name
             const isDelivery = tripDto.trip_type === 'delivery';
-            const displayName = isDelivery 
+            const displayName = isDelivery
                 ? (tripDto.recipient_name || tripDto.passenger_name || tripDto.trip_details?.passenger_name || 'Recipient')
                 : (tripDto.passenger_name || tripDto.trip_details?.passenger_name || 'Walk-in Passenger');
-            
+
             // For delivery trips, store package_description; for standard trips, use special_instructions
             const instructions = isDelivery
                 ? (tripDto.package_description || tripDto.special_instructions || tripDto.trip_details?.special_instructions || null)
@@ -518,7 +518,7 @@ export class TripsService {
             // Extract coordinates from PostgreSQL POINT type and convert to PostGIS geography
             // PostgreSQL POINT type stores (lng, lat) as (x, y)
             // Use array indexing [0] for x (longitude) and [1] for y (latitude)
-            
+
             let query: string;
             let params: any[];
 
@@ -607,13 +607,13 @@ export class TripsService {
 
             // Step 1: First try to find drivers with matching vehicle type (if specified)
             let nearbyDrivers: string[] = [];
-            
+
             if (vehicleTypeId) {
                 this.logger.log(`🔍 Step 1: Finding drivers with vehicle_type_id=${vehicleTypeId} for trip ${trip.id}`);
                 nearbyDrivers = await this.findNearbyDrivers(
                     trip.pickup_latitude,
                     trip.pickup_longitude,
-                    10, // 10km radius for vehicle type matching
+                    3, // 3km radius for vehicle type matching
                     vehicleTypeId
                 );
             }
@@ -625,7 +625,7 @@ export class TripsService {
                 nearbyDrivers = await this.findNearbyDrivers(
                     trip.pickup_latitude,
                     trip.pickup_longitude,
-                    5, // 5km radius for fallback
+                    3, // 3km radius for fallback
                     undefined // No vehicle type filter
                 );
             }
@@ -669,13 +669,13 @@ export class TripsService {
                         return;
                     }
 
-                    this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 5km`);
-                    
-                    // Find all drivers within 5km (any vehicle type)
+                    this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 3km`);
+
+                    // Find all drivers within 3km (any vehicle type)
                     const allTypeDrivers = await this.findNearbyDrivers(
                         trip.pickup_latitude,
                         trip.pickup_longitude,
-                        5, // 5km radius
+                        3, // 3km radius
                         undefined // No vehicle type filter
                     );
 
@@ -683,12 +683,12 @@ export class TripsService {
                         // Merge with existing drivers, avoiding duplicates
                         const existingDriverIds = new Set(currentState.nearbyDrivers);
                         const newDrivers = allTypeDrivers.filter(id => !existingDriverIds.has(id));
-                        
+
                         if (newDrivers.length > 0) {
                             this.logger.log(`➕ Adding ${newDrivers.length} additional drivers (all vehicle types) to broadcast list`);
                             currentState.nearbyDrivers = [...currentState.nearbyDrivers, ...newDrivers];
                             currentState.hasExpandedToAllTypes = true;
-                            
+
                             // If we've exhausted the current list, start broadcasting to new drivers
                             if (currentState.currentIndex >= currentState.nearbyDrivers.length - newDrivers.length) {
                                 await this.broadcastToNextDriver(trip, currentState);
@@ -697,7 +697,7 @@ export class TripsService {
                             this.logger.log(`No additional drivers found when expanding to all vehicle types`);
                         }
                     } else {
-                        this.logger.log(`No drivers found within 5km when expanding to all vehicle types`);
+                        this.logger.log(`No drivers found within 3km when expanding to all vehicle types`);
                     }
                 }, 60 * 1000); // 1 minute
             }
@@ -758,7 +758,7 @@ export class TripsService {
 
             // For delivery trips, use recipient_name; for standard trips, use passenger_name
             const isDelivery = trip.trip_type === 'delivery';
-            const displayName = isDelivery 
+            const displayName = isDelivery
                 ? (trip.recipient_name || passengerName || 'Recipient')
                 : (passengerName || 'Walk-in Passenger');
 
