@@ -106,6 +106,18 @@ export class SupportTicketsService {
             const params: any[] = [];
             let paramCount = 0;
 
+            // Get the current user ID for unread count calculation
+            const currentUserId = user_id || filters.user_id;
+            
+            // Add currentUserId to params first for unread count calculation
+            if (currentUserId) {
+                paramCount++;
+                params.push(currentUserId);
+            } else {
+                paramCount++;
+                params.push('00000000-0000-0000-0000-000000000000');
+            }
+            
             let query = `
                 SELECT 
                     t.id,
@@ -124,7 +136,11 @@ export class SupportTicketsService {
                     assignee.full_name as assignee_name,
                     assignee.email as assignee_email,
                     (SELECT COUNT(*) FROM ticket_responses WHERE ticket_id = t.id) as response_count,
-                    (SELECT MAX(created_at) FROM ticket_responses WHERE ticket_id = t.id) as last_response_at
+                    (SELECT MAX(created_at) FROM ticket_responses WHERE ticket_id = t.id) as last_response_at,
+                    (SELECT COUNT(*) FROM ticket_responses tr 
+                     WHERE tr.ticket_id = t.id 
+                     AND tr.is_read = false 
+                     AND tr.user_id != $1::uuid) as unread_count
                 FROM support_tickets t
                 LEFT JOIN users u ON t.user_id = u.id
                 LEFT JOIN users assignee ON t.assigned_to_user_id = assignee.id
@@ -172,7 +188,8 @@ export class SupportTicketsService {
                 params.push(`%${search}%`);
             }
 
-            query += ` ORDER BY t.created_at DESC LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`;
+            paramCount++;
+            query += ` ORDER BY t.created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
             params.push(limit, offset);
 
             const result = await this.postgresService.query(query, params);
@@ -318,9 +335,29 @@ export class SupportTicketsService {
 
             const responsesResult = await this.postgresService.query(responsesQuery, [ticketId]);
 
+            // Mark all unread responses from support/admin as read when ticket owner views the ticket
+            if (userId && ticket.user_id === userId) {
+                const unreadResponseIds = responsesResult.rows
+                    .filter((r: any) => !r.is_read && r.user_id !== userId && (r.user_type === 'customer_support' || r.user_type === 'admin' || r.user_type === 'super_admin'))
+                    .map((r: any) => r.id);
+                
+                if (unreadResponseIds.length > 0) {
+                    const placeholders = unreadResponseIds.map((_, i) => `$${i + 1}`).join(',');
+                    await this.postgresService.query(
+                        `UPDATE ticket_responses SET is_read = true WHERE id IN (${placeholders})`,
+                        unreadResponseIds
+                    );
+                    this.logger.log(`✅ Marked ${unreadResponseIds.length} responses as read for ticket ${ticketId}`);
+                }
+            }
+
             return {
                 ...ticket,
-                responses: responsesResult.rows,
+                responses: responsesResult.rows.map((r: any) => ({
+                    ...r,
+                    // Update is_read status if we just marked them as read
+                    is_read: userId && ticket.user_id === userId && r.user_id !== userId && (r.user_type === 'customer_support' || r.user_type === 'admin' || r.user_type === 'super_admin') ? true : r.is_read,
+                })),
             };
         } catch (error) {
             if (error instanceof HttpException) {
