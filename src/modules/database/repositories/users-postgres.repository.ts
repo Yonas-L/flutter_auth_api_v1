@@ -29,7 +29,8 @@ export class UsersPostgresRepository extends BasePostgresRepository<User, Create
 
     async findByEmail(email: string): Promise<User | null> {
         try {
-            const query = `SELECT * FROM ${this.tableName} WHERE email = $1`;
+            // Case-insensitive email lookup
+            const query = `SELECT * FROM ${this.tableName} WHERE LOWER(email) = LOWER($1)`;
             const result = await this.query(query, [email]);
 
             if (result.rows.length === 0) {
