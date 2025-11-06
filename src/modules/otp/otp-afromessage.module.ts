@@ -8,10 +8,12 @@ import { DatabaseModule } from '../database/database.module';
 import { AuthPostgresService } from '../auth/auth-postgres.service';
 import { SimpleAuthService } from '../auth/simple-auth.service';
 import { UsersModule } from '../users/users.module';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
     imports: [
         DatabaseModule,
+        MailModule,
         JwtModule.registerAsync({
             useFactory: (configService: ConfigService) => ({
                 secret: configService.get('JWT_ACCESS_SECRET'),
