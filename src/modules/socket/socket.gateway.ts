@@ -618,4 +618,129 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     getDriverById(userId: string): AuthenticatedSocket | undefined {
         return this.connectedDrivers.get(userId);
     }
+
+    // ==========================================
+    // Ticket Event Broadcasting Methods
+    // ==========================================
+
+    /**
+     * Broadcast ticket created event
+     */
+    broadcastTicketCreated(ticketId: string, userId: string) {
+        try {
+            this.logger.log(`📡 Broadcasting ticket created: ${ticketId} by user ${userId}`);
+
+            // Broadcast to dashboard clients
+            this.dashboardClients.forEach((dashboardClient) => {
+                dashboardClient.emit('ticket:created', {
+                    ticketId,
+                    userId,
+                    timestamp: new Date().toISOString(),
+                });
+            });
+
+            this.logger.log(`📡 Broadcasted ticket created to ${this.dashboardClients.size} dashboard clients`);
+        } catch (error) {
+            this.logger.error(`❌ Error broadcasting ticket created:`, error);
+        }
+    }
+
+    /**
+     * Broadcast ticket updated event
+     */
+    broadcastTicketUpdated(ticketId: string, changes: any) {
+        try {
+            this.logger.log(`📡 Broadcasting ticket updated: ${ticketId}`);
+
+            // Broadcast to ticket room
+            this.server.to(`ticket:${ticketId}`).emit('ticket:updated', {
+                ticketId,
+                changes,
+                timestamp: new Date().toISOString(),
+            });
+
+            // Broadcast to dashboard clients
+            this.dashboardClients.forEach((dashboardClient) => {
+                dashboardClient.emit('ticket:updated', {
+                    ticketId,
+                    changes,
+                    timestamp: new Date().toISOString(),
+                });
+            });
+
+            this.logger.log(`📡 Broadcasted ticket updated to ticket room and ${this.dashboardClients.size} dashboard clients`);
+        } catch (error) {
+            this.logger.error(`❌ Error broadcasting ticket updated:`, error);
+        }
+    }
+
+    /**
+     * Broadcast ticket assigned event
+     */
+    broadcastTicketAssigned(ticketId: string, assignedToUserId: string) {
+        try {
+            this.logger.log(`📡 Broadcasting ticket assigned: ${ticketId} to user ${assignedToUserId}`);
+
+            // Broadcast to ticket room
+            this.server.to(`ticket:${ticketId}`).emit('ticket:assigned', {
+                ticketId,
+                assignedToUserId,
+                timestamp: new Date().toISOString(),
+            });
+
+            // Broadcast to dashboard clients
+            this.dashboardClients.forEach((dashboardClient) => {
+                dashboardClient.emit('ticket:assigned', {
+                    ticketId,
+                    assignedToUserId,
+                    timestamp: new Date().toISOString(),
+                });
+            });
+
+            this.logger.log(`📡 Broadcasted ticket assigned to ticket room and ${this.dashboardClients.size} dashboard clients`);
+        } catch (error) {
+            this.logger.error(`❌ Error broadcasting ticket assigned:`, error);
+        }
+    }
+
+    /**
+     * Broadcast ticket response added event
+     */
+    broadcastTicketResponseAdded(
+        ticketId: string,
+        responseId: string,
+        userId: string,
+        message: string,
+        createdAt: Date,
+    ) {
+        try {
+            this.logger.log(`📡 Broadcasting ticket response added: ${responseId} to ticket ${ticketId}`);
+
+            // Broadcast to ticket room
+            this.server.to(`ticket:${ticketId}`).emit('ticket:response_added', {
+                ticketId,
+                responseId,
+                userId,
+                message,
+                createdAt: createdAt.toISOString(),
+                timestamp: new Date().toISOString(),
+            });
+
+            // Broadcast to dashboard clients
+            this.dashboardClients.forEach((dashboardClient) => {
+                dashboardClient.emit('ticket:response_added', {
+                    ticketId,
+                    responseId,
+                    userId,
+                    message,
+                    createdAt: createdAt.toISOString(),
+                    timestamp: new Date().toISOString(),
+                });
+            });
+
+            this.logger.log(`📡 Broadcasted ticket response added to ticket room and ${this.dashboardClients.size} dashboard clients`);
+        } catch (error) {
+            this.logger.error(`❌ Error broadcasting ticket response added:`, error);
+        }
+    }
 }

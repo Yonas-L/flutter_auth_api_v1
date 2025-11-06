@@ -23,7 +23,7 @@ export class PostgresService implements OnModuleInit {
             ssl: {
                 rejectUnauthorized: false // Required for Render PostgreSQL
             },
-            max: 10, // Reduced pool size for better stability
+            max: 20, // Connection pool size for better concurrent performance
             idleTimeoutMillis: 60000, // Increased idle timeout
             connectionTimeoutMillis: 20000, // Increased connection timeout
         });

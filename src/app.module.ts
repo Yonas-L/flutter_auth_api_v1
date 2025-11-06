@@ -22,6 +22,7 @@ import { TripsModule } from './modules/trips/trips.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { WalletModule } from './modules/wallet/wallet.module';
+import { SupportTicketsModule } from './modules/support-tickets/support-tickets.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { WalletModule } from './modules/wallet/wallet.module';
     NotificationsModule,
     AdminModule,
     WalletModule,
+    SupportTicketsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
