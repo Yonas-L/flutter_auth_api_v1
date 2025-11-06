@@ -35,7 +35,8 @@ interface BroadcastState {
     currentIndex: number;
     broadcastStartTime: Date;
     timer: NodeJS.Timeout | null;
-    vehicleTypeTimer?: NodeJS.Timeout | null; // Timer for vehicle type matching phase
+    vehicleTypeTimer?: NodeJS.Timeout | null; // Timer for vehicle type matching phase (1 minute)
+    autoCancelTimer?: NodeJS.Timeout | null; // Timer for auto-cancel after expansion (2 minutes, total 3 minutes)
     hasExpandedToAllTypes?: boolean; // Whether we've expanded to all vehicle types
 }
 
@@ -492,8 +493,8 @@ export class TripsService {
 
             // Broadcast to all available drivers (ONLY for dispatcher trips, NOT driver-initiated)
             // Driver-initiated trips (createTrip) do NOT broadcast - they're already assigned
+            // Note: Auto-cancel is now handled in notifyAvailableDrivers (3 minutes total)
             await this.notifyAvailableDrivers(trip);
-            await this.scheduleAutoCancel(trip.id, 10); // 10 minutes total for sequential broadcasting
 
             return trip;
         } catch (error) {
@@ -613,7 +614,7 @@ export class TripsService {
                 nearbyDrivers = await this.findNearbyDrivers(
                     trip.pickup_latitude,
                     trip.pickup_longitude,
-                    3, // 3km radius for vehicle type matching
+                    1.5, // 1.5km radius for vehicle type matching
                     vehicleTypeId
                 );
             }
@@ -625,14 +626,69 @@ export class TripsService {
                 nearbyDrivers = await this.findNearbyDrivers(
                     trip.pickup_latitude,
                     trip.pickup_longitude,
-                    3, // 3km radius for fallback
+                    1.5, // 1.5km radius for fallback
                     undefined // No vehicle type filter
                 );
             }
 
             if (nearbyDrivers.length === 0) {
-                this.logger.warn(`No nearby drivers found for trip ${trip.id} - trip will be auto-canceled after 10 minutes if no driver accepts`);
-                // Auto-cancel timer is already scheduled in createDispatcherTrip, so trip will be canceled automatically
+                this.logger.warn(`No nearby drivers found for trip ${trip.id} - trip will be auto-canceled after 3 minutes if no driver accepts`);
+                // Auto-cancel timer is set up below, but if no drivers found at all, we still set it up
+                // Set up auto-cancel timer for 3 minutes
+                const broadcastState: BroadcastState = {
+                    tripId: trip.id,
+                    nearbyDrivers: [],
+                    currentIndex: 0,
+                    broadcastStartTime: new Date(),
+                    timer: null,
+                    vehicleTypeTimer: null,
+                    autoCancelTimer: null,
+                    hasExpandedToAllTypes: true,
+                };
+                this.tripBroadcasts.set(trip.id, broadcastState);
+
+                broadcastState.autoCancelTimer = setTimeout(async () => {
+                    const checkQuery = 'SELECT driver_id, status, dispatcher_user_id, trip_reference FROM trips WHERE id = $1';
+                    const checkResult = await this.postgresService.query(checkQuery, [trip.id]);
+                    if (checkResult.rows.length > 0) {
+                        const tripData = checkResult.rows[0];
+                        if (!tripData.driver_id && tripData.status === 'requested') {
+                            const cancelQuery = `
+                                UPDATE trips
+                                SET status = 'canceled',
+                                    canceled_at = NOW(),
+                                    cancel_reason = 'no drivers in the selected place please wait and try again',
+                                    updated_at = NOW()
+                                WHERE id = $1 AND status = 'requested' AND driver_id IS NULL
+                                RETURNING *
+                            `;
+                            const cancelResult = await this.postgresService.query(cancelQuery, [trip.id]);
+                            if (cancelResult.rows.length > 0) {
+                                this.logger.log(`✅ Auto-canceled trip ${trip.id} after 3 minutes (no drivers found)`);
+                                if (tripData.dispatcher_user_id) {
+                                    await this.notificationsService.create({
+                                        user_id: tripData.dispatcher_user_id,
+                                        title: 'Trip canceled (no drivers)',
+                                        body: `Trip ${tripData.trip_reference || trip.id} was automatically canceled: no drivers in the selected place please wait and try again.`,
+                                        type: 'trip',
+                                        notification_type: 'trip_update',
+                                        notification_category: 'trip',
+                                        reference_id: trip.id,
+                                        reference_type: 'trip',
+                                        priority: 'normal',
+                                        metadata: {
+                                            trip_id: trip.id,
+                                            event_type: 'auto_canceled',
+                                            cancel_reason: 'no drivers in the selected place please wait and try again',
+                                        },
+                                    });
+                                }
+                                this.socketGateway.broadcastTripStatusChange(trip.id, '', 'canceled');
+                            }
+                        }
+                    }
+                    this.tripBroadcasts.delete(trip.id);
+                }, 3 * 60 * 1000); // 3 minutes
                 return;
             }
 
@@ -644,10 +700,89 @@ export class TripsService {
                 broadcastStartTime: new Date(),
                 timer: null,
                 vehicleTypeTimer: null,
+                autoCancelTimer: null,
                 hasExpandedToAllTypes: !vehicleTypeId || nearbyDrivers.length === 0, // Already expanded if no vehicle type or no matches
             };
 
             this.tripBroadcasts.set(trip.id, broadcastState);
+
+            // Set up auto-cancel timer for 3 minutes total (if already expanded, set for 2 minutes from now)
+            const autoCancelDelay = broadcastState.hasExpandedToAllTypes ? 2 * 60 * 1000 : 3 * 60 * 1000;
+            broadcastState.autoCancelTimer = setTimeout(async () => {
+                // Check if trip was already accepted
+                const currentState = this.tripBroadcasts.get(trip.id);
+                if (!currentState) {
+                    this.logger.log(`Trip ${trip.id} was already accepted or canceled, skipping auto-cancel`);
+                    return;
+                }
+
+                // Check if trip has a driver assigned
+                const checkQuery = 'SELECT driver_id, status FROM trips WHERE id = $1';
+                const checkResult = await this.postgresService.query(checkQuery, [trip.id]);
+                if (checkResult.rows.length > 0 && checkResult.rows[0].driver_id) {
+                    this.logger.log(`Trip ${trip.id} was already accepted, skipping auto-cancel`);
+                    this.tripBroadcasts.delete(trip.id);
+                    return;
+                }
+
+                if (checkResult.rows.length > 0 && checkResult.rows[0].status !== 'requested') {
+                    this.logger.log(`Trip ${trip.id} status is ${checkResult.rows[0].status}, skipping auto-cancel`);
+                    this.tripBroadcasts.delete(trip.id);
+                    return;
+                }
+
+                this.logger.log(`⏱️ 3 minutes elapsed - auto-canceling trip ${trip.id} (no drivers in selected place)`);
+
+                // Auto-cancel the trip
+                const cancelQuery = `
+                    UPDATE trips
+                    SET status = 'canceled',
+                        canceled_at = NOW(),
+                        cancel_reason = 'no drivers in the selected place please wait and try again',
+                        updated_at = NOW()
+                    WHERE id = $1 AND status = 'requested' AND driver_id IS NULL
+                    RETURNING *
+                `;
+
+                const cancelResult = await this.postgresService.query(cancelQuery, [trip.id]);
+
+                if (cancelResult.rows.length > 0) {
+                    const canceledTrip = cancelResult.rows[0];
+                    this.logger.log(`✅ Auto-canceled trip ${trip.id} after 3 minutes`);
+
+                    // Clean up broadcast state
+                    if (currentState.timer) {
+                        clearTimeout(currentState.timer);
+                    }
+                    if (currentState.vehicleTypeTimer) {
+                        clearTimeout(currentState.vehicleTypeTimer);
+                    }
+                    this.tripBroadcasts.delete(trip.id);
+
+                    // Send notification to dispatcher if exists
+                    if (canceledTrip.dispatcher_user_id) {
+                        await this.notificationsService.create({
+                            user_id: canceledTrip.dispatcher_user_id,
+                            title: 'Trip canceled (no drivers)',
+                            body: `Trip ${canceledTrip.trip_reference || trip.id} was automatically canceled: no drivers in the selected place please wait and try again.`,
+                            type: 'trip',
+                            notification_type: 'trip_update',
+                            notification_category: 'trip',
+                            reference_id: trip.id,
+                            reference_type: 'trip',
+                            priority: 'normal',
+                            metadata: {
+                                trip_id: trip.id,
+                                event_type: 'auto_canceled',
+                                cancel_reason: 'no drivers in the selected place please wait and try again',
+                            },
+                        });
+                    }
+
+                    // Broadcast status change (no driver assigned, so pass empty string)
+                    this.socketGateway.broadcastTripStatusChange(trip.id, '', 'canceled');
+                }
+            }, autoCancelDelay);
 
             // If we have vehicle type filtering and found drivers, set up 1-minute timer to expand
             if (vehicleTypeId && nearbyDrivers.length > 0 && !broadcastState.hasExpandedToAllTypes) {
@@ -669,13 +804,13 @@ export class TripsService {
                         return;
                     }
 
-                    this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 3km`);
+                    this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 1.5km`);
 
-                    // Find all drivers within 3km (any vehicle type)
+                    // Find all drivers within 1.5km (any vehicle type)
                     const allTypeDrivers = await this.findNearbyDrivers(
                         trip.pickup_latitude,
                         trip.pickup_longitude,
-                        3, // 3km radius
+                        1.5, // 1.5km radius
                         undefined // No vehicle type filter
                     );
 
@@ -697,7 +832,7 @@ export class TripsService {
                             this.logger.log(`No additional drivers found when expanding to all vehicle types`);
                         }
                     } else {
-                        this.logger.log(`No drivers found within 3km when expanding to all vehicle types`);
+                        this.logger.log(`No drivers found within 1.5km when expanding to all vehicle types`);
                     }
                 }, 60 * 1000); // 1 minute
             }
@@ -866,6 +1001,9 @@ export class TripsService {
                     if (broadcastState?.vehicleTypeTimer) {
                         clearTimeout(broadcastState.vehicleTypeTimer);
                     }
+                    if (broadcastState?.autoCancelTimer) {
+                        clearTimeout(broadcastState.autoCancelTimer);
+                    }
                     this.tripBroadcasts.delete(tripId);
                 }
 
@@ -924,6 +1062,9 @@ export class TripsService {
                 }
                 if (broadcastState.vehicleTypeTimer) {
                     clearTimeout(broadcastState.vehicleTypeTimer);
+                }
+                if (broadcastState.autoCancelTimer) {
+                    clearTimeout(broadcastState.autoCancelTimer);
                 }
                 this.tripBroadcasts.delete(tripId);
                 this.logger.log(`Cancelled broadcast state for trip ${tripId}`);
