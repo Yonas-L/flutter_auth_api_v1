@@ -530,6 +530,25 @@ export class SupportTicketsService {
         try {
             // Verify ticket exists
             const ticket = await this.getTicketById(ticketId, userId);
+            
+            // Check if ticket is closed/resolved - drivers cannot reply to closed tickets
+            const ticketStatus = ticket.status?.toLowerCase();
+            if (ticketStatus === 'closed' || ticketStatus === 'resolved') {
+                // Check if user is admin/support (they can still reply to closed tickets)
+                const userQuery = `SELECT user_type FROM users WHERE id = $1`;
+                const userResult = await this.postgresService.query(userQuery, [userId]);
+                const userType = userResult.rows[0]?.user_type;
+                
+                const isAdminOrSupport = ['admin', 'customer_support', 'super_admin'].includes(userType);
+                
+                if (!isAdminOrSupport) {
+                    // Driver trying to reply to closed ticket - block it
+                    throw new HttpException(
+                        'Cannot add response to a closed or resolved ticket',
+                        HttpStatus.FORBIDDEN,
+                    );
+                }
+            }
 
             // Insert response
             const responseQuery = `
