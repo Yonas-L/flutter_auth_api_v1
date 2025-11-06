@@ -16,6 +16,7 @@ export interface DispatcherTripDto {
     trip_type?: string;
     passenger_phone?: string;
     passenger_name?: string;
+    recipient_name?: string; // For delivery trips - name shown to driver
     vehicle_type_id?: number;
     estimated_distance_km?: number;
     estimated_duration_minutes?: number;
@@ -24,7 +25,7 @@ export interface DispatcherTripDto {
         passenger_name?: string;
         special_instructions?: string;
     };
-    package_description?: string;
+    package_description?: string; // For delivery trips - package details
     special_instructions?: string;
 }
 
@@ -406,6 +407,17 @@ export class TripsService {
                 this.calculateEstimatedDuration(tripDto.estimated_distance_km || 0);
             const estimatedDurationMinutes = Math.ceil(Number(estimatedDurationMinutesRaw || 0));
 
+            // For delivery trips, use recipient_name; for standard trips, use passenger_name
+            const isDelivery = tripDto.trip_type === 'delivery';
+            const displayName = isDelivery 
+                ? (tripDto.recipient_name || tripDto.passenger_name || tripDto.trip_details?.passenger_name || 'Recipient')
+                : (tripDto.passenger_name || tripDto.trip_details?.passenger_name || 'Walk-in Passenger');
+            
+            // For delivery trips, store package_description; for standard trips, use special_instructions
+            const instructions = isDelivery
+                ? (tripDto.package_description || tripDto.special_instructions || tripDto.trip_details?.special_instructions || null)
+                : (tripDto.special_instructions || tripDto.trip_details?.special_instructions || null);
+
             const tripQuery = `
                 INSERT INTO trips (
                     passenger_id,
@@ -430,11 +442,13 @@ export class TripsService {
                     trip_reference,
                     is_new_passenger,
                     dispatcher_user_id,
-                    special_instructions
+                    special_instructions,
+                    recipient_name,
+                    package_description
                 ) VALUES (
                     $1, $2, $3, $4, $5, $6, ST_Point($7, $8)::point,
                     $9, $10, $11, ST_Point($12, $13)::point, $14, $15, $16,
-                    $17, $18, $19, $20, NOW(), $21, $22, $23, $24
+                    $17, $18, $19, $20, NOW(), $21, $22, $23, $24, $25, $26
                 ) RETURNING *
             `;
 
@@ -462,7 +476,9 @@ export class TripsService {
                 tripReference,
                 passengerProfileId ? false : true,
                 dispatcherUserId,
-                tripDto.special_instructions || tripDto.trip_details?.special_instructions || tripDto.package_description || null,
+                instructions,
+                isDelivery ? displayName : null, // recipient_name only for delivery trips
+                isDelivery ? tripDto.package_description || null : null, // package_description only for delivery trips
             ];
 
             const tripResult = await client.query(tripQuery, tripValues);
@@ -625,17 +641,23 @@ export class TripsService {
                 }
             }
 
+            // For delivery trips, use recipient_name; for standard trips, use passenger_name
+            const isDelivery = trip.trip_type === 'delivery';
+            const displayName = isDelivery 
+                ? (trip.recipient_name || passengerName || 'Recipient')
+                : (passengerName || 'Walk-in Passenger');
+
             // Convert fare from cents to ETB for Flutter app
             const fareEstimate = trip.estimated_fare_cents ? trip.estimated_fare_cents / 100 : null;
 
             // Format payload to match SupportTripRequest model in Flutter app
-            const payload = {
+            const payload: any = {
                 tripId: trip.id,
                 trip_id: trip.id, // Support both formats
                 passengerPhone: passengerPhone || '',
                 passenger_phone: passengerPhone || '', // Support both formats
-                passengerName: passengerName || 'Walk-in Passenger',
-                passenger_name: passengerName || 'Walk-in Passenger', // Support both formats
+                passengerName: displayName, // Use recipient_name for delivery, passenger_name for standard
+                passenger_name: displayName, // Support both formats
                 pickup: {
                     address: trip.pickup_address,
                     lat: trip.pickup_latitude,
@@ -662,6 +684,15 @@ export class TripsService {
                 expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 minutes expiry
                 expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // Support both formats
             };
+
+            // Add delivery-specific fields
+            if (isDelivery) {
+                payload.recipient_name = trip.recipient_name || displayName;
+                payload.package_description = trip.package_description || trip.special_instructions || null;
+                payload.notes = trip.package_description || trip.special_instructions || null; // For backward compatibility
+            } else {
+                payload.notes = trip.special_instructions || null;
+            }
 
             // Send to this specific driver only
             this.socketGateway.sendToDriver(driverUserId, 'trip_support_broadcast', payload);
