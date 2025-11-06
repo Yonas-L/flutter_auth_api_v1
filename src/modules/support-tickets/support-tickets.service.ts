@@ -327,10 +327,9 @@ export class SupportTicketsService {
                     u.full_name as user_name,
                     u.email as user_email,
                     u.user_type,
-                    COALESCE(dp.avatar_url, u.avatar_url) as user_avatar
+                    u.avatar_url as user_avatar
                 FROM ticket_responses r
                 LEFT JOIN users u ON r.user_id = u.id
-                LEFT JOIN driver_profiles dp ON u.id = dp.user_id
                 WHERE r.ticket_id = $1
                 ORDER BY r.created_at ASC
             `;
