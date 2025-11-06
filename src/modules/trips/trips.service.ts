@@ -36,8 +36,10 @@ interface BroadcastState {
     broadcastStartTime: Date;
     timer: NodeJS.Timeout | null;
     vehicleTypeTimer?: NodeJS.Timeout | null; // Timer for vehicle type matching phase (1 minute)
+    vehicleTypePollInterval?: NodeJS.Timeout | null; // Interval to poll for matching vehicle type drivers
     autoCancelTimer?: NodeJS.Timeout | null; // Timer for auto-cancel after expansion (2 minutes, total 3 minutes)
     hasExpandedToAllTypes?: boolean; // Whether we've expanded to all vehicle types
+    isPollingForVehicleType?: boolean; // Whether we're currently polling for matching vehicle type
 }
 
 @Injectable()
@@ -608,6 +610,7 @@ export class TripsService {
 
             // Step 1: First try to find drivers with matching vehicle type (if specified)
             let nearbyDrivers: string[] = [];
+            let shouldPollForVehicleType = false;
 
             if (vehicleTypeId) {
                 this.logger.log(`🔍 Step 1: Finding drivers with vehicle_type_id=${vehicleTypeId} for trip ${trip.id}`);
@@ -617,6 +620,12 @@ export class TripsService {
                     2, // 2km radius for vehicle type matching
                     vehicleTypeId
                 );
+
+                if (nearbyDrivers.length === 0) {
+                    // No matching vehicle type drivers found - we'll poll for 1 minute before expanding
+                    this.logger.log(`⚠️ No drivers found with matching vehicle_type_id=${vehicleTypeId} - will poll for 1 minute before expanding to all vehicle types`);
+                    shouldPollForVehicleType = true;
+                }
             } else {
                 // No vehicle type specified - search all vehicle types immediately
                 this.logger.log(`🔍 No vehicle type specified - searching all vehicle types for trip ${trip.id}`);
@@ -628,9 +637,9 @@ export class TripsService {
                 );
             }
 
-            if (nearbyDrivers.length === 0) {
+            // If no drivers found at all (even after searching all types), set up auto-cancel only
+            if (nearbyDrivers.length === 0 && !shouldPollForVehicleType) {
                 this.logger.warn(`No nearby drivers found for trip ${trip.id} - trip will be auto-canceled after 3 minutes if no driver accepts`);
-                // Auto-cancel timer is set up below, but if no drivers found at all, we still set it up
                 // Set up auto-cancel timer for 3 minutes
                 const broadcastState: BroadcastState = {
                     tripId: trip.id,
@@ -639,8 +648,10 @@ export class TripsService {
                     broadcastStartTime: new Date(),
                     timer: null,
                     vehicleTypeTimer: null,
+                    vehicleTypePollInterval: null,
                     autoCancelTimer: null,
                     hasExpandedToAllTypes: true,
+                    isPollingForVehicleType: false,
                 };
                 this.tripBroadcasts.set(trip.id, broadcastState);
 
@@ -698,8 +709,10 @@ export class TripsService {
                 broadcastStartTime: new Date(),
                 timer: null,
                 vehicleTypeTimer: null,
+                vehicleTypePollInterval: null,
                 autoCancelTimer: null,
                 hasExpandedToAllTypes: !vehicleTypeId, // Only expanded if no vehicle type was specified
+                isPollingForVehicleType: shouldPollForVehicleType, // Will poll if no matching vehicle type found
             };
 
             this.tripBroadcasts.set(trip.id, broadcastState);
@@ -784,62 +797,157 @@ export class TripsService {
                 }
             }, autoCancelDelay);
 
-            // If we have vehicle type filtering, set up 1-minute timer to expand to all vehicle types
-            // This applies whether or not matching vehicle type drivers were found
+            // If we have vehicle type filtering, set up polling or expansion timer
             if (vehicleTypeId && !broadcastState.hasExpandedToAllTypes) {
-                this.logger.log(`⏱️ Setting 1-minute timer to expand to all vehicle types if no acceptance for trip ${trip.id}`);
-                broadcastState.vehicleTypeTimer = setTimeout(async () => {
-                    // Check if trip was already accepted
-                    const currentState = this.tripBroadcasts.get(trip.id);
-                    if (!currentState) {
-                        this.logger.log(`Trip ${trip.id} was already accepted or canceled, skipping expansion`);
-                        return;
-                    }
+                if (shouldPollForVehicleType) {
+                    // No matching vehicle type drivers found - poll for 1 minute
+                    this.logger.log(`⏱️ Starting 1-minute polling for matching vehicle_type_id=${vehicleTypeId} drivers for trip ${trip.id}`);
+                    broadcastState.isPollingForVehicleType = true;
 
-                    // Check if trip has a driver assigned
-                    const checkQuery = 'SELECT driver_id FROM trips WHERE id = $1';
-                    const checkResult = await this.postgresService.query(checkQuery, [trip.id]);
-                    if (checkResult.rows.length > 0 && checkResult.rows[0].driver_id) {
-                        this.logger.log(`Trip ${trip.id} was already accepted, skipping expansion`);
-                        this.tripBroadcasts.delete(trip.id);
-                        return;
-                    }
+                    // Poll every 5 seconds for matching vehicle type drivers
+                    let pollCount = 0;
+                    const maxPolls = 12; // 12 polls * 5 seconds = 60 seconds (1 minute)
 
-                    this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 2km`);
+                    broadcastState.vehicleTypePollInterval = setInterval(async () => {
+                        pollCount++;
 
-                    // Find all drivers within 2km (any vehicle type)
-                    const allTypeDrivers = await this.findNearbyDrivers(
-                        trip.pickup_latitude,
-                        trip.pickup_longitude,
-                        2, // 2km radius
-                        undefined // No vehicle type filter
-                    );
+                        // Check if trip was already accepted
+                        const currentState = this.tripBroadcasts.get(trip.id);
+                        if (!currentState) {
+                            this.logger.log(`Trip ${trip.id} was already accepted or canceled, stopping polling`);
+                            if (broadcastState.vehicleTypePollInterval) {
+                                clearInterval(broadcastState.vehicleTypePollInterval);
+                            }
+                            return;
+                        }
 
-                    if (allTypeDrivers.length > 0) {
-                        // Merge with existing drivers, avoiding duplicates
-                        const existingDriverIds = new Set(currentState.nearbyDrivers);
-                        const newDrivers = allTypeDrivers.filter(id => !existingDriverIds.has(id));
+                        // Check if trip has a driver assigned
+                        const checkQuery = 'SELECT driver_id FROM trips WHERE id = $1';
+                        const checkResult = await this.postgresService.query(checkQuery, [trip.id]);
+                        if (checkResult.rows.length > 0 && checkResult.rows[0].driver_id) {
+                            this.logger.log(`Trip ${trip.id} was already accepted, stopping polling`);
+                            if (broadcastState.vehicleTypePollInterval) {
+                                clearInterval(broadcastState.vehicleTypePollInterval);
+                            }
+                            this.tripBroadcasts.delete(trip.id);
+                            return;
+                        }
 
-                        if (newDrivers.length > 0) {
-                            this.logger.log(`➕ Adding ${newDrivers.length} additional drivers (all vehicle types) to broadcast list`);
-                            currentState.nearbyDrivers = [...currentState.nearbyDrivers, ...newDrivers];
-                            currentState.hasExpandedToAllTypes = true;
+                        // Search for matching vehicle type drivers
+                        this.logger.log(`🔍 Polling attempt ${pollCount}/${maxPolls}: Searching for vehicle_type_id=${vehicleTypeId} drivers within 2km`);
+                        const matchingDrivers = await this.findNearbyDrivers(
+                            trip.pickup_latitude,
+                            trip.pickup_longitude,
+                            2, // 2km radius
+                            vehicleTypeId
+                        );
 
-                            // If we've exhausted the current list, start broadcasting to new drivers
-                            if (currentState.currentIndex >= currentState.nearbyDrivers.length - newDrivers.length) {
+                        if (matchingDrivers.length > 0) {
+                            this.logger.log(`✅ Found ${matchingDrivers.length} matching vehicle type drivers during polling - starting broadcast`);
+
+                            // Stop polling
+                            if (broadcastState.vehicleTypePollInterval) {
+                                clearInterval(broadcastState.vehicleTypePollInterval);
+                                broadcastState.vehicleTypePollInterval = null;
+                            }
+                            broadcastState.isPollingForVehicleType = false;
+
+                            // Add matching drivers to broadcast list
+                            currentState.nearbyDrivers = matchingDrivers;
+                            currentState.currentIndex = 0;
+
+                            // Start broadcasting to first driver
+                            await this.broadcastToNextDriver(trip, currentState);
+                        } else if (pollCount >= maxPolls) {
+                            // 1 minute elapsed - expand to all vehicle types
+                            this.logger.log(`⏱️ 1 minute elapsed - no matching vehicle type drivers found, expanding to all vehicle types within 2km`);
+
+                            // Stop polling
+                            if (broadcastState.vehicleTypePollInterval) {
+                                clearInterval(broadcastState.vehicleTypePollInterval);
+                                broadcastState.vehicleTypePollInterval = null;
+                            }
+                            broadcastState.isPollingForVehicleType = false;
+
+                            // Find all drivers within 2km (any vehicle type)
+                            const allTypeDrivers = await this.findNearbyDrivers(
+                                trip.pickup_latitude,
+                                trip.pickup_longitude,
+                                2, // 2km radius
+                                undefined // No vehicle type filter
+                            );
+
+                            if (allTypeDrivers.length > 0) {
+                                this.logger.log(`➕ Found ${allTypeDrivers.length} drivers (all vehicle types) - adding to broadcast list`);
+                                currentState.nearbyDrivers = allTypeDrivers;
+                                currentState.hasExpandedToAllTypes = true;
+                                currentState.currentIndex = 0;
+
+                                // Start broadcasting to first driver
                                 await this.broadcastToNextDriver(trip, currentState);
+                            } else {
+                                this.logger.log(`No drivers found within 2km when expanding to all vehicle types`);
+                            }
+                        }
+                    }, 5 * 1000); // Poll every 5 seconds
+                } else {
+                    // Matching vehicle type drivers found - set up 1-minute timer to expand if not accepted
+                    this.logger.log(`⏱️ Setting 1-minute timer to expand to all vehicle types if no acceptance for trip ${trip.id}`);
+                    broadcastState.vehicleTypeTimer = setTimeout(async () => {
+                        // Check if trip was already accepted
+                        const currentState = this.tripBroadcasts.get(trip.id);
+                        if (!currentState) {
+                            this.logger.log(`Trip ${trip.id} was already accepted or canceled, skipping expansion`);
+                            return;
+                        }
+
+                        // Check if trip has a driver assigned
+                        const checkQuery = 'SELECT driver_id FROM trips WHERE id = $1';
+                        const checkResult = await this.postgresService.query(checkQuery, [trip.id]);
+                        if (checkResult.rows.length > 0 && checkResult.rows[0].driver_id) {
+                            this.logger.log(`Trip ${trip.id} was already accepted, skipping expansion`);
+                            this.tripBroadcasts.delete(trip.id);
+                            return;
+                        }
+
+                        this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 2km`);
+
+                        // Find all drivers within 2km (any vehicle type)
+                        const allTypeDrivers = await this.findNearbyDrivers(
+                            trip.pickup_latitude,
+                            trip.pickup_longitude,
+                            2, // 2km radius
+                            undefined // No vehicle type filter
+                        );
+
+                        if (allTypeDrivers.length > 0) {
+                            // Merge with existing drivers, avoiding duplicates
+                            const existingDriverIds = new Set(currentState.nearbyDrivers);
+                            const newDrivers = allTypeDrivers.filter(id => !existingDriverIds.has(id));
+
+                            if (newDrivers.length > 0) {
+                                this.logger.log(`➕ Adding ${newDrivers.length} additional drivers (all vehicle types) to broadcast list`);
+                                currentState.nearbyDrivers = [...currentState.nearbyDrivers, ...newDrivers];
+                                currentState.hasExpandedToAllTypes = true;
+
+                                // If we've exhausted the current list, start broadcasting to new drivers
+                                if (currentState.currentIndex >= currentState.nearbyDrivers.length - newDrivers.length) {
+                                    await this.broadcastToNextDriver(trip, currentState);
+                                }
+                            } else {
+                                this.logger.log(`No additional drivers found when expanding to all vehicle types`);
                             }
                         } else {
-                            this.logger.log(`No additional drivers found when expanding to all vehicle types`);
+                            this.logger.log(`No drivers found within 2km when expanding to all vehicle types`);
                         }
-                    } else {
-                        this.logger.log(`No drivers found within 2km when expanding to all vehicle types`);
-                    }
-                }, 60 * 1000); // 1 minute
+                    }, 60 * 1000); // 1 minute
+                }
             }
 
-            // Start broadcasting to first driver
-            await this.broadcastToNextDriver(trip, broadcastState);
+            // Start broadcasting to first driver (if we have drivers and not polling)
+            if (nearbyDrivers.length > 0 && !shouldPollForVehicleType) {
+                await this.broadcastToNextDriver(trip, broadcastState);
+            }
 
         } catch (error) {
             this.logger.error('Failed to start sequential broadcast:', error);
@@ -1002,6 +1110,9 @@ export class TripsService {
                     if (broadcastState?.vehicleTypeTimer) {
                         clearTimeout(broadcastState.vehicleTypeTimer);
                     }
+                    if (broadcastState?.vehicleTypePollInterval) {
+                        clearInterval(broadcastState.vehicleTypePollInterval);
+                    }
                     if (broadcastState?.autoCancelTimer) {
                         clearTimeout(broadcastState.autoCancelTimer);
                     }
@@ -1063,6 +1174,9 @@ export class TripsService {
                 }
                 if (broadcastState.vehicleTypeTimer) {
                     clearTimeout(broadcastState.vehicleTypeTimer);
+                }
+                if (broadcastState.vehicleTypePollInterval) {
+                    clearInterval(broadcastState.vehicleTypePollInterval);
                 }
                 if (broadcastState.autoCancelTimer) {
                     clearTimeout(broadcastState.autoCancelTimer);
