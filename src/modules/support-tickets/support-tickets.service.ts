@@ -419,8 +419,8 @@ export class SupportTicketsService {
                     );
                     this.logger.log(`✅ Marked ${unreadDriverResponseIds.length} driver responses as read for ticket ${ticketId}`);
                     
-                    // Emit socket event to notify about read status change
-                    this.socketGateway.broadcastTicketUpdated(ticketId, userId);
+                    // Emit socket event to notify about read status change (updates dashboard stats)
+                    this.socketGateway.broadcastTicketUpdated(ticketId, { unread_count_changed: true });
                 }
             }
 
@@ -650,7 +650,7 @@ export class SupportTicketsService {
                 return this.adminListCache.data;
             }
 
-            // Fetch from database
+            // Fetch from database - only admin and super_admin users (not customer_support)
             const query = `
                 SELECT 
                     id,
@@ -658,7 +658,7 @@ export class SupportTicketsService {
                     email,
                     user_type
                 FROM users
-                WHERE user_type IN ('admin', 'customer_support', 'super_admin')
+                WHERE user_type IN ('admin', 'super_admin')
                 AND is_active = true
                 ORDER BY full_name ASC
             `;
