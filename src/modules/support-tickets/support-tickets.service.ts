@@ -14,6 +14,7 @@ export interface TicketFilters {
     search?: string;
     page?: number;
     limit?: number;
+    is_support_user?: boolean; // Whether the current user is support/admin
 }
 
 interface CachedAdminList {
@@ -72,10 +73,28 @@ export class SupportTicketsService {
 
             const ticket = result.rows[0];
 
+            // Create the first response with the initial message
+            const responseQuery = `
+                INSERT INTO ticket_responses (
+                    ticket_id,
+                    user_id,
+                    message,
+                    is_read,
+                    created_at
+                ) VALUES ($1, $2, $3, false, NOW())
+                RETURNING *
+            `;
+
+            await this.postgresService.query(responseQuery, [
+                ticket.id,
+                userId,
+                message,
+            ]);
+
             // Emit socket event for real-time updates
             this.socketGateway.broadcastTicketCreated(ticket.id, userId);
 
-            this.logger.log(`Ticket created: ${ticket.id}`);
+            this.logger.log(`Ticket created: ${ticket.id} with initial message`);
             return ticket;
         } catch (error) {
             this.logger.error(`Error creating ticket:`, error);
@@ -100,22 +119,33 @@ export class SupportTicketsService {
                 search,
                 page = 1,
                 limit = 20,
+                is_support_user = false,
             } = filters;
 
             const offset = (page - 1) * limit;
             const params: any[] = [];
             let paramCount = 0;
 
-            // Get the current user ID for unread count calculation
-            const currentUserId = user_id || filters.user_id;
-            
-            // Add currentUserId to params first for unread count calculation
-            if (currentUserId) {
-                paramCount++;
-                params.push(currentUserId);
+            // Build unread count subquery based on user type
+            let unreadCountSubquery: string;
+            if (is_support_user) {
+                // For support/admin: count ONLY unread driver responses (not initial message)
+                unreadCountSubquery = `
+                    (SELECT COUNT(*) FROM ticket_responses tr 
+                     JOIN users u_resp ON tr.user_id = u_resp.id
+                     WHERE tr.ticket_id = t.id 
+                     AND tr.is_read = false 
+                     AND u_resp.user_type NOT IN ('admin', 'customer_support', 'super_admin'))
+                `;
             } else {
-                paramCount++;
-                params.push('00000000-0000-0000-0000-000000000000');
+                // For drivers: count unread support/admin responses
+                unreadCountSubquery = `
+                    (SELECT COUNT(*) FROM ticket_responses tr 
+                     JOIN users u_resp ON tr.user_id = u_resp.id
+                     WHERE tr.ticket_id = t.id 
+                     AND tr.is_read = false 
+                     AND u_resp.user_type IN ('admin', 'customer_support', 'super_admin'))
+                `;
             }
             
             let query = `
@@ -137,10 +167,15 @@ export class SupportTicketsService {
                     assignee.email as assignee_email,
                     (SELECT COUNT(*) FROM ticket_responses WHERE ticket_id = t.id) as response_count,
                     (SELECT MAX(created_at) FROM ticket_responses WHERE ticket_id = t.id) as last_response_at,
-                    (SELECT COUNT(*) FROM ticket_responses tr 
-                     WHERE tr.ticket_id = t.id 
-                     AND tr.is_read = false 
-                     AND tr.user_id != $1::uuid) as unread_count
+                    ${unreadCountSubquery} as unread_count,
+                    COALESCE(
+                        (SELECT tr.message 
+                         FROM ticket_responses tr 
+                         WHERE tr.ticket_id = t.id 
+                         ORDER BY tr.created_at DESC 
+                         LIMIT 1),
+                        t.message
+                    ) as latest_message
                 FROM support_tickets t
                 LEFT JOIN users u ON t.user_id = u.id
                 LEFT JOIN users assignee ON t.assigned_to_user_id = assignee.id
@@ -189,7 +224,10 @@ export class SupportTicketsService {
             }
 
             paramCount++;
-            query += ` ORDER BY t.created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
+            query += ` ORDER BY COALESCE(
+                (SELECT MAX(created_at) FROM ticket_responses WHERE ticket_id = t.id),
+                t.created_at
+            ) DESC, t.created_at DESC LIMIT $${paramCount} OFFSET $${paramCount + 1}`;
             params.push(limit, offset);
 
             const result = await this.postgresService.query(query, params);
@@ -336,8 +374,37 @@ export class SupportTicketsService {
 
             const responsesResult = await this.postgresService.query(responsesQuery, [ticketId]);
 
-            // Mark all unread responses from support/admin as read when ticket owner views the ticket
-            if (userId && ticket.user_id === userId) {
+            // Check if user is support/admin
+            let isSupportUser = false;
+            if (userId) {
+                const userQuery = `SELECT user_type FROM users WHERE id = $1`;
+                const userResult = await this.postgresService.query(userQuery, [userId]);
+                const userType = userResult.rows[0]?.user_type;
+                isSupportUser = ['admin', 'customer_support', 'super_admin'].includes(userType);
+            }
+
+            // Mark unread messages as read when support/admin views the ticket
+            if (userId && isSupportUser) {
+                // Mark all unread driver responses as read
+                const unreadDriverResponseIds = responsesResult.rows
+                    .filter((r: any) => !r.is_read && r.user_id !== userId && !['admin', 'customer_support', 'super_admin'].includes(r.user_type))
+                    .map((r: any) => r.id);
+                
+                if (unreadDriverResponseIds.length > 0) {
+                    const placeholders = unreadDriverResponseIds.map((_, i) => `$${i + 1}`).join(',');
+                    await this.postgresService.query(
+                        `UPDATE ticket_responses SET is_read = true WHERE id IN (${placeholders})`,
+                        unreadDriverResponseIds
+                    );
+                    this.logger.log(`✅ Marked ${unreadDriverResponseIds.length} driver responses as read for ticket ${ticketId}`);
+                    
+                    // Emit socket event to notify about read status change
+                    this.socketGateway.broadcastTicketUpdated(ticketId, userId);
+                }
+            }
+
+            // Mark all unread responses from support/admin as read when ticket owner (driver) views the ticket
+            if (userId && ticket.user_id === userId && !isSupportUser) {
                 const unreadResponseIds = responsesResult.rows
                     .filter((r: any) => !r.is_read && r.user_id !== userId && (r.user_type === 'customer_support' || r.user_type === 'admin' || r.user_type === 'super_admin'))
                     .map((r: any) => r.id);

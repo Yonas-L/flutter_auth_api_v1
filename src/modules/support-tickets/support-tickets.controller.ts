@@ -81,6 +81,9 @@ export class SupportTicketsController {
                 filters.user_id = user.id;
             }
 
+            // Pass user type for unread count calculation
+            filters.is_support_user = isAdmin;
+
             const result = await this.supportTicketsService.getTickets(filters);
 
             return {
