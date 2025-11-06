@@ -35,6 +35,8 @@ interface BroadcastState {
     currentIndex: number;
     broadcastStartTime: Date;
     timer: NodeJS.Timeout | null;
+    vehicleTypeTimer?: NodeJS.Timeout | null; // Timer for vehicle type matching phase
+    hasExpandedToAllTypes?: boolean; // Whether we've expanded to all vehicle types
 }
 
 @Injectable()
@@ -508,36 +510,70 @@ export class TripsService {
      * @param pickupLat Pickup latitude
      * @param pickupLng Pickup longitude  
      * @param radiusKm Search radius in kilometers (default 10km)
+     * @param vehicleTypeId Optional vehicle type ID to filter drivers by vehicle type
      * @returns Array of driver user IDs sorted by distance
      */
-    private async findNearbyDrivers(pickupLat: number, pickupLng: number, radiusKm: number = 10): Promise<string[]> {
+    private async findNearbyDrivers(pickupLat: number, pickupLng: number, radiusKm: number = 10, vehicleTypeId?: number): Promise<string[]> {
         try {
             // Extract coordinates from PostgreSQL POINT type and convert to PostGIS geography
             // PostgreSQL POINT type stores (lng, lat) as (x, y)
             // Use array indexing [0] for x (longitude) and [1] for y (latitude)
-            const query = `
-                SELECT dp.user_id
-                FROM driver_profiles dp
-                WHERE dp.is_online = true 
-                  AND dp.is_available = true
-                  AND dp.last_known_location IS NOT NULL
-                  AND dp.last_location_update > NOW() - INTERVAL '5 minutes'
-                  AND ST_DWithin(
-                      ST_SetSRID(ST_MakePoint((dp.last_known_location)[0], (dp.last_known_location)[1]), 4326)::geography,
-                      ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
-                      $3 * 1000
-                  )
-                ORDER BY ST_Distance(
-                    ST_SetSRID(ST_MakePoint((dp.last_known_location)[0], (dp.last_known_location)[1]), 4326)::geography,
-                    ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
-                )
-                LIMIT 20
-            `;
+            
+            let query: string;
+            let params: any[];
 
-            const result = await this.postgresService.query(query, [pickupLng, pickupLat, radiusKm]);
+            if (vehicleTypeId) {
+                // Filter by vehicle type - join with vehicles table
+                query = `
+                    SELECT DISTINCT dp.user_id
+                    FROM driver_profiles dp
+                    INNER JOIN vehicles v ON v.driver_id = dp.id
+                    WHERE dp.is_online = true 
+                      AND dp.is_available = true
+                      AND dp.last_known_location IS NOT NULL
+                      AND dp.last_location_update > NOW() - INTERVAL '5 minutes'
+                      AND v.vehicle_type_id = $4
+                      AND v.is_active = true
+                      AND ST_DWithin(
+                          ST_SetSRID(ST_MakePoint((dp.last_known_location)[0], (dp.last_known_location)[1]), 4326)::geography,
+                          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+                          $3 * 1000
+                      )
+                    ORDER BY ST_Distance(
+                        ST_SetSRID(ST_MakePoint((dp.last_known_location)[0], (dp.last_known_location)[1]), 4326)::geography,
+                        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
+                    )
+                    LIMIT 20
+                `;
+                params = [pickupLng, pickupLat, radiusKm, vehicleTypeId];
+            } else {
+                // No vehicle type filter - get all nearby drivers
+                query = `
+                    SELECT dp.user_id
+                    FROM driver_profiles dp
+                    WHERE dp.is_online = true 
+                      AND dp.is_available = true
+                      AND dp.last_known_location IS NOT NULL
+                      AND dp.last_location_update > NOW() - INTERVAL '5 minutes'
+                      AND ST_DWithin(
+                          ST_SetSRID(ST_MakePoint((dp.last_known_location)[0], (dp.last_known_location)[1]), 4326)::geography,
+                          ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+                          $3 * 1000
+                      )
+                    ORDER BY ST_Distance(
+                        ST_SetSRID(ST_MakePoint((dp.last_known_location)[0], (dp.last_known_location)[1]), 4326)::geography,
+                        ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
+                    )
+                    LIMIT 20
+                `;
+                params = [pickupLng, pickupLat, radiusKm];
+            }
+
+            const result = await this.postgresService.query(query, params);
             const driverUserIds = result.rows.map(row => row.user_id);
 
-            this.logger.log(`Found ${driverUserIds.length} nearby drivers within ${radiusKm}km of (${pickupLat}, ${pickupLng})`);
+            const vehicleTypeInfo = vehicleTypeId ? ` with vehicle_type_id=${vehicleTypeId}` : '';
+            this.logger.log(`Found ${driverUserIds.length} nearby drivers${vehicleTypeInfo} within ${radiusKm}km of (${pickupLat}, ${pickupLng})`);
 
             return driverUserIds;
         } catch (error) {
@@ -553,6 +589,10 @@ export class TripsService {
      * NOT called for driver-initiated trips (createTrip) - they're already assigned
      * 
      * Event: 'trip_support_broadcast' - matches Flutter app listener
+     * 
+     * Strategy:
+     * 1. First, broadcast to drivers with matching vehicle_type_id (if specified)
+     * 2. After 1 minute, if no acceptance, expand to all vehicle types within 5km
      */
     private async notifyAvailableDrivers(trip: any) {
         try {
@@ -563,12 +603,32 @@ export class TripsService {
                 return;
             }
 
-            // Find nearby drivers using PostGIS
-            const nearbyDrivers = await this.findNearbyDrivers(
-                trip.pickup_latitude,
-                trip.pickup_longitude,
-                10 // 10km radius
-            );
+            const vehicleTypeId = trip.vehicle_type_id ? Number(trip.vehicle_type_id) : undefined;
+
+            // Step 1: First try to find drivers with matching vehicle type (if specified)
+            let nearbyDrivers: string[] = [];
+            
+            if (vehicleTypeId) {
+                this.logger.log(`🔍 Step 1: Finding drivers with vehicle_type_id=${vehicleTypeId} for trip ${trip.id}`);
+                nearbyDrivers = await this.findNearbyDrivers(
+                    trip.pickup_latitude,
+                    trip.pickup_longitude,
+                    10, // 10km radius for vehicle type matching
+                    vehicleTypeId
+                );
+            }
+
+            // If no drivers found with matching vehicle type, or no vehicle type specified,
+            // expand to all vehicle types immediately
+            if (nearbyDrivers.length === 0) {
+                this.logger.log(`⚠️ No drivers found with matching vehicle type${vehicleTypeId ? ` (${vehicleTypeId})` : ''}, expanding to all vehicle types`);
+                nearbyDrivers = await this.findNearbyDrivers(
+                    trip.pickup_latitude,
+                    trip.pickup_longitude,
+                    5, // 5km radius for fallback
+                    undefined // No vehicle type filter
+                );
+            }
 
             if (nearbyDrivers.length === 0) {
                 this.logger.warn(`No nearby drivers found for trip ${trip.id} - trip will be auto-canceled after 10 minutes if no driver accepts`);
@@ -583,9 +643,64 @@ export class TripsService {
                 currentIndex: 0,
                 broadcastStartTime: new Date(),
                 timer: null,
+                vehicleTypeTimer: null,
+                hasExpandedToAllTypes: !vehicleTypeId || nearbyDrivers.length === 0, // Already expanded if no vehicle type or no matches
             };
 
             this.tripBroadcasts.set(trip.id, broadcastState);
+
+            // If we have vehicle type filtering and found drivers, set up 1-minute timer to expand
+            if (vehicleTypeId && nearbyDrivers.length > 0 && !broadcastState.hasExpandedToAllTypes) {
+                this.logger.log(`⏱️ Setting 1-minute timer to expand to all vehicle types if no acceptance for trip ${trip.id}`);
+                broadcastState.vehicleTypeTimer = setTimeout(async () => {
+                    // Check if trip was already accepted
+                    const currentState = this.tripBroadcasts.get(trip.id);
+                    if (!currentState) {
+                        this.logger.log(`Trip ${trip.id} was already accepted or canceled, skipping expansion`);
+                        return;
+                    }
+
+                    // Check if trip has a driver assigned
+                    const checkQuery = 'SELECT driver_id FROM trips WHERE id = $1';
+                    const checkResult = await this.postgresService.query(checkQuery, [trip.id]);
+                    if (checkResult.rows.length > 0 && checkResult.rows[0].driver_id) {
+                        this.logger.log(`Trip ${trip.id} was already accepted, skipping expansion`);
+                        this.tripBroadcasts.delete(trip.id);
+                        return;
+                    }
+
+                    this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 5km`);
+                    
+                    // Find all drivers within 5km (any vehicle type)
+                    const allTypeDrivers = await this.findNearbyDrivers(
+                        trip.pickup_latitude,
+                        trip.pickup_longitude,
+                        5, // 5km radius
+                        undefined // No vehicle type filter
+                    );
+
+                    if (allTypeDrivers.length > 0) {
+                        // Merge with existing drivers, avoiding duplicates
+                        const existingDriverIds = new Set(currentState.nearbyDrivers);
+                        const newDrivers = allTypeDrivers.filter(id => !existingDriverIds.has(id));
+                        
+                        if (newDrivers.length > 0) {
+                            this.logger.log(`➕ Adding ${newDrivers.length} additional drivers (all vehicle types) to broadcast list`);
+                            currentState.nearbyDrivers = [...currentState.nearbyDrivers, ...newDrivers];
+                            currentState.hasExpandedToAllTypes = true;
+                            
+                            // If we've exhausted the current list, start broadcasting to new drivers
+                            if (currentState.currentIndex >= currentState.nearbyDrivers.length - newDrivers.length) {
+                                await this.broadcastToNextDriver(trip, currentState);
+                            }
+                        } else {
+                            this.logger.log(`No additional drivers found when expanding to all vehicle types`);
+                        }
+                    } else {
+                        this.logger.log(`No drivers found within 5km when expanding to all vehicle types`);
+                    }
+                }, 60 * 1000); // 1 minute
+            }
 
             // Start broadcasting to first driver
             await this.broadcastToNextDriver(trip, broadcastState);
@@ -748,6 +863,9 @@ export class TripsService {
                     if (broadcastState?.timer) {
                         clearTimeout(broadcastState.timer);
                     }
+                    if (broadcastState?.vehicleTypeTimer) {
+                        clearTimeout(broadcastState.vehicleTypeTimer);
+                    }
                     this.tripBroadcasts.delete(tripId);
                 }
 
@@ -803,6 +921,9 @@ export class TripsService {
             if (broadcastState) {
                 if (broadcastState.timer) {
                     clearTimeout(broadcastState.timer);
+                }
+                if (broadcastState.vehicleTypeTimer) {
+                    clearTimeout(broadcastState.vehicleTypeTimer);
                 }
                 this.tripBroadcasts.delete(tripId);
                 this.logger.log(`Cancelled broadcast state for trip ${tripId}`);
