@@ -346,8 +346,10 @@ export class SupportTicketsService {
                     u.full_name as requester_name,
                     u.email as requester_email,
                     u.phone_number as requester_phone,
+                    u.avatar_url as requester_avatar,
                     assignee.full_name as assignee_name,
-                    assignee.email as assignee_email
+                    assignee.email as assignee_email,
+                    assignee.avatar_url as assignee_avatar
                 FROM support_tickets t
                 LEFT JOIN users u ON t.user_id = u.id
                 LEFT JOIN users assignee ON t.assigned_to_user_id = assignee.id
