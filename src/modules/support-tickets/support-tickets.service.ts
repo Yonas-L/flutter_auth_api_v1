@@ -614,6 +614,29 @@ export class SupportTicketsService {
                 user?.user_type, // Include user_type in the event
             );
 
+            // If support/admin sent the message, send a push notification directly to the driver
+            const isSupportOrAdmin = ['admin', 'customer_support', 'super_admin'].includes(user?.user_type);
+            if (isSupportOrAdmin && ticket.user_id) {
+                // Send socket event directly to the driver for push notification
+                const notificationSent = this.socketGateway.sendToDriver(
+                    ticket.user_id,
+                    'ticket:message_received',
+                    {
+                        ticketId,
+                        responseId: response.id,
+                        message: addResponseDto.message,
+                        senderName: user?.full_name || 'Support',
+                        timestamp: new Date().toISOString(),
+                    }
+                );
+                
+                if (notificationSent) {
+                    this.logger.log(`📱 Sent push notification to driver ${ticket.user_id} for ticket ${ticketId}`);
+                } else {
+                    this.logger.warn(`⚠️ Driver ${ticket.user_id} not connected, push notification not sent`);
+                }
+            }
+
             // Note: Driver responses should remain unread until support/admin views them
             // Only mark support/admin responses as read when the ticket owner (driver) views them
             // This is handled in getTicketById when the driver views the ticket
