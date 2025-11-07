@@ -612,14 +612,9 @@ export class SupportTicketsService {
                 user?.user_type, // Include user_type in the event
             );
 
-            // Mark as read if the response is from the ticket owner viewing their own ticket
-            // (They just responded, so they've seen it)
-            if (ticket.user_id === userId) {
-                await this.postgresService.query(
-                    `UPDATE ticket_responses SET is_read = true WHERE id = $1`,
-                    [response.id]
-                );
-            }
+            // Note: Driver responses should remain unread until support/admin views them
+            // Only mark support/admin responses as read when the ticket owner (driver) views them
+            // This is handled in getTicketById when the driver views the ticket
 
             return {
                 ...response,
