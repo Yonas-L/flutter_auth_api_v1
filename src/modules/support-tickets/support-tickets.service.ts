@@ -45,11 +45,19 @@ export class SupportTicketsService {
 
             const {
                 subject,
-                message,
+                message = '',
                 category = 'general',
                 priority = 'normal',
                 attachments = [],
             } = createTicketDto;
+
+            // Validate: either message or attachments must be present
+            if ((!message || message.trim().length === 0) && (!attachments || attachments.length === 0)) {
+                throw new HttpException(
+                    'Either message or attachments must be provided',
+                    HttpStatus.BAD_REQUEST,
+                );
+            }
 
             const query = `
                 INSERT INTO support_tickets (
@@ -68,7 +76,7 @@ export class SupportTicketsService {
             const result = await this.postgresService.query(query, [
                 userId,
                 subject,
-                message,
+                message || '', // Use empty string if message is not provided
                 'open',
                 priority,
                 category,
@@ -582,8 +590,18 @@ export class SupportTicketsService {
                 }
             }
 
-            // Prepare attachments as JSONB
+            // Validate: either message or attachments must be present
+            const message = addResponseDto.message || '';
             const attachments = addResponseDto.attachments || [];
+            
+            if ((!message || message.trim().length === 0) && (!attachments || attachments.length === 0)) {
+                throw new HttpException(
+                    'Either message or attachments must be provided',
+                    HttpStatus.BAD_REQUEST,
+                );
+            }
+
+            // Prepare attachments as JSONB
             const attachmentsJson = JSON.stringify(attachments);
 
             // Insert response
@@ -602,7 +620,7 @@ export class SupportTicketsService {
             const responseResult = await this.postgresService.query(responseQuery, [
                 ticketId,
                 userId,
-                addResponseDto.message,
+                message || '', // Use empty string if message is not provided
                 attachmentsJson,
             ]);
 
@@ -624,7 +642,7 @@ export class SupportTicketsService {
                 ticketId,
                 response.id,
                 userId,
-                addResponseDto.message,
+                message || '', // Use the validated message variable
                 new Date(),
                 user?.user_type, // Include user_type in the event
             );
@@ -639,7 +657,7 @@ export class SupportTicketsService {
                     {
                         ticketId,
                         responseId: response.id,
-                        message: addResponseDto.message,
+                        message: message || 'New attachment',
                         senderName: user?.full_name || 'Support',
                         timestamp: new Date().toISOString(),
                     }

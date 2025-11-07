@@ -4,9 +4,9 @@ import { AttachmentDto } from './attachment.dto';
 
 export class AddResponseDto {
     @IsString()
-    @IsNotEmpty()
+    @IsOptional()
     @MaxLength(5000)
-    message: string;
+    message?: string;
 
     @IsArray()
     @IsOptional()
