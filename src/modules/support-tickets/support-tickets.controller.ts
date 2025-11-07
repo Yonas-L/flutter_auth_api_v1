@@ -21,6 +21,7 @@ import { CloudinaryService } from '../storage/cloudinary.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { AddResponseDto } from './dto/add-response.dto';
+import { AttachmentDto } from './dto/attachment.dto';
 import type { User } from '../database/entities/user.entity';
 
 @Controller('api/support-tickets')
@@ -253,30 +254,23 @@ export class SupportTicketsController {
                 throw new HttpException('No files provided', HttpStatus.BAD_REQUEST);
             }
 
-            const uploadedAttachments = [];
+            const uploadedAttachments: AttachmentDto[] = [];
 
             for (const file of files.files) {
                 // Determine if it's an image or document
                 const isImage = file.mimetype.startsWith('image/');
                 const fileType = isImage ? 'image' : 'document';
 
-                // Upload to Cloudinary
-                let uploadResult;
-                if (isImage) {
-                    // For images, use uploadDocument which handles both images and documents
-                    uploadResult = await this.cloudinaryService.uploadDocument(
-                        file,
-                        user.id,
-                        `ticket_attachment_${Date.now()}`,
-                    );
-                } else {
-                    // For documents (PDF, DOCX, etc.)
-                    uploadResult = await this.cloudinaryService.uploadDocument(
-                        file,
-                        user.id,
-                        `ticket_attachment_${Date.now()}`,
-                    );
-                }
+                // Generate unique filename to avoid conflicts when uploading multiple files
+                const uniqueId = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+                const publicId = `ticket_attachment_${uniqueId}`;
+
+                // Upload to Cloudinary (uploadDocument handles both images and documents)
+                const uploadResult = await this.cloudinaryService.uploadDocument(
+                    file,
+                    user.id,
+                    publicId,
+                );
 
                 uploadedAttachments.push({
                     url: uploadResult.secure_url,
