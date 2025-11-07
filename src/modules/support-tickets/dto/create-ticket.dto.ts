@@ -1,4 +1,22 @@
-import { IsString, IsNotEmpty, IsOptional, IsIn, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsIn, MaxLength, IsArray, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class AttachmentDto {
+    @IsString()
+    @IsNotEmpty()
+    url: string;
+
+    @IsString()
+    @IsNotEmpty()
+    filename: string;
+
+    @IsString()
+    @IsNotEmpty()
+    type: string; // 'image' or 'document'
+
+    @IsOptional()
+    size?: number; // File size in bytes
+}
 
 export class CreateTicketDto {
     @IsString()
@@ -20,5 +38,11 @@ export class CreateTicketDto {
     @IsOptional()
     @IsIn(['low', 'normal', 'high', 'urgent'])
     priority?: string;
+
+    @IsArray()
+    @IsOptional()
+    @ValidateNested({ each: true })
+    @Type(() => AttachmentDto)
+    attachments?: AttachmentDto[];
 }
 

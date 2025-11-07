@@ -10,10 +10,14 @@ import {
     HttpException,
     HttpStatus,
     Logger,
+    UseInterceptors,
+    UploadedFiles,
 } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { SupportTicketsService } from './support-tickets.service';
+import { CloudinaryService } from '../storage/cloudinary.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { AddResponseDto } from './dto/add-response.dto';
@@ -24,7 +28,10 @@ import type { User } from '../database/entities/user.entity';
 export class SupportTicketsController {
     private readonly logger = new Logger(SupportTicketsController.name);
 
-    constructor(private readonly supportTicketsService: SupportTicketsService) { }
+    constructor(
+        private readonly supportTicketsService: SupportTicketsService,
+        private readonly cloudinaryService: CloudinaryService,
+    ) { }
 
     @Post()
     async createTicket(
@@ -224,6 +231,73 @@ export class SupportTicketsController {
             this.logger.error(`Error adding response:`, error);
             throw new HttpException(
                 'Failed to add response',
+                HttpStatus.INTERNAL_SERVER_ERROR,
+            );
+        }
+    }
+
+    /**
+     * Upload attachment files for ticket or response
+     * POST /api/support-tickets/upload-attachment
+     */
+    @Post('upload-attachment')
+    @UseInterceptors(FileFieldsInterceptor([
+        { name: 'files', maxCount: 10 }
+    ]))
+    async uploadAttachment(
+        @CurrentUser() user: User,
+        @UploadedFiles() files: { files?: Express.Multer.File[] },
+    ) {
+        try {
+            if (!files?.files || files.files.length === 0) {
+                throw new HttpException('No files provided', HttpStatus.BAD_REQUEST);
+            }
+
+            const uploadedAttachments = [];
+
+            for (const file of files.files) {
+                // Determine if it's an image or document
+                const isImage = file.mimetype.startsWith('image/');
+                const fileType = isImage ? 'image' : 'document';
+
+                // Upload to Cloudinary
+                let uploadResult;
+                if (isImage) {
+                    // For images, use uploadDocument which handles both images and documents
+                    uploadResult = await this.cloudinaryService.uploadDocument(
+                        file,
+                        user.id,
+                        `ticket_attachment_${Date.now()}`,
+                    );
+                } else {
+                    // For documents (PDF, DOCX, etc.)
+                    uploadResult = await this.cloudinaryService.uploadDocument(
+                        file,
+                        user.id,
+                        `ticket_attachment_${Date.now()}`,
+                    );
+                }
+
+                uploadedAttachments.push({
+                    url: uploadResult.secure_url,
+                    filename: file.originalname,
+                    type: fileType,
+                    size: file.size,
+                });
+            }
+
+            return {
+                success: true,
+                attachments: uploadedAttachments,
+                message: 'Files uploaded successfully',
+            };
+        } catch (error) {
+            this.logger.error(`Error uploading attachment:`, error);
+            if (error instanceof HttpException) {
+                throw error;
+            }
+            throw new HttpException(
+                'Failed to upload attachment',
                 HttpStatus.INTERNAL_SERVER_ERROR,
             );
         }

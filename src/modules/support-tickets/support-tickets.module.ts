@@ -6,11 +6,13 @@ import { SupportTicketsService } from './support-tickets.service';
 import { DatabaseModule } from '../database/database.module';
 import { AuthPostgresModule } from '../auth/auth-postgres.module';
 import { SocketModule } from '../socket/socket.module';
+import { CloudinaryModule } from '../storage/cloudinary.module';
 
 @Module({
     imports: [
         DatabaseModule,
         AuthPostgresModule,
+        CloudinaryModule, // Import CloudinaryModule for file uploads
         forwardRef(() => SocketModule), // Import SocketModule with forwardRef to resolve circular dependency
         JwtModule.registerAsync({
             inject: [ConfigService],

@@ -1,6 +1,7 @@
 import { Injectable, Logger, HttpException, HttpStatus, Inject, forwardRef } from '@nestjs/common';
 import { PostgresService } from '../database/postgres.service';
 import { SocketGateway } from '../socket/socket.gateway';
+import { CloudinaryService } from '../storage/cloudinary.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { AddResponseDto } from './dto/add-response.dto';
@@ -32,6 +33,7 @@ export class SupportTicketsService {
         private readonly postgresService: PostgresService,
         @Inject(forwardRef(() => SocketGateway))
         private readonly socketGateway: SocketGateway,
+        private readonly cloudinaryService: CloudinaryService,
     ) { }
 
     /**
@@ -46,6 +48,7 @@ export class SupportTicketsService {
                 message,
                 category = 'general',
                 priority = 'normal',
+                attachments = [],
             } = createTicketDto;
 
             const query = `
@@ -73,15 +76,19 @@ export class SupportTicketsService {
 
             const ticket = result.rows[0];
 
-            // Create the first response with the initial message
+            // Prepare attachments as JSONB
+            const attachmentsJson = JSON.stringify(attachments);
+
+            // Create the first response with the initial message and attachments
             const responseQuery = `
                 INSERT INTO ticket_responses (
                     ticket_id,
                     user_id,
                     message,
+                    attachments,
                     is_read,
                     created_at
-                ) VALUES ($1, $2, $3, false, NOW())
+                ) VALUES ($1, $2, $3, $4::jsonb, false, NOW())
                 RETURNING *
             `;
 
@@ -89,6 +96,7 @@ export class SupportTicketsService {
                 ticket.id,
                 userId,
                 message,
+                attachmentsJson,
             ]);
 
             const initialResponse = initialResponseResult.rows[0];
@@ -383,6 +391,7 @@ export class SupportTicketsService {
                     r.ticket_id,
                     r.user_id,
                     r.message,
+                    r.attachments,
                     r.is_read,
                     r.created_at,
                     u.full_name as user_name,
@@ -573,15 +582,20 @@ export class SupportTicketsService {
                 }
             }
 
+            // Prepare attachments as JSONB
+            const attachments = addResponseDto.attachments || [];
+            const attachmentsJson = JSON.stringify(attachments);
+
             // Insert response
             const responseQuery = `
                 INSERT INTO ticket_responses (
                     ticket_id,
                     user_id,
                     message,
+                    attachments,
                     is_read,
                     created_at
-                ) VALUES ($1, $2, $3, false, NOW())
+                ) VALUES ($1, $2, $3, $4::jsonb, false, NOW())
                 RETURNING *
             `;
 
@@ -589,6 +603,7 @@ export class SupportTicketsService {
                 ticketId,
                 userId,
                 addResponseDto.message,
+                attachmentsJson,
             ]);
 
             const response = responseResult.rows[0];
