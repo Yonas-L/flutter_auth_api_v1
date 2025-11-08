@@ -5,7 +5,7 @@ import { PostgresService } from '../database/postgres.service';
 export class AdsService {
     private readonly logger = new Logger(AdsService.name);
 
-    constructor(private readonly postgresService: PostgresService) {}
+    constructor(private readonly postgresService: PostgresService) { }
 
     /**
      * Get all ads with pagination
@@ -199,8 +199,9 @@ export class AdsService {
             }
             if (description !== undefined) {
                 paramCount++;
+                const descValue = description === null || description === '' ? null : description;
                 updates.push(`description = $${paramCount}`);
-                values.push(description);
+                values.push(descValue);
             }
             if (image_url !== undefined) {
                 paramCount++;
@@ -209,8 +210,9 @@ export class AdsService {
             }
             if (target_url !== undefined) {
                 paramCount++;
+                const urlValue = target_url === null || target_url === '' ? null : target_url;
                 updates.push(`target_url = $${paramCount}`);
-                values.push(target_url);
+                values.push(urlValue);
             }
             if (target_user_type !== undefined) {
                 if (!['passenger', 'driver', 'all'].includes(target_user_type)) {
@@ -225,23 +227,31 @@ export class AdsService {
             }
             if (is_active !== undefined) {
                 paramCount++;
-                updates.push(`is_active = $${paramCount}`);
-                values.push(is_active);
+                updates.push(`is_active = $${paramCount}::boolean`);
+                values.push(Boolean(is_active));
             }
             if (sort_order !== undefined) {
                 paramCount++;
-                updates.push(`sort_order = $${paramCount}`);
-                values.push(sort_order);
+                updates.push(`sort_order = $${paramCount}::integer`);
+                values.push(parseInt(String(sort_order), 10));
             }
             if (start_date !== undefined) {
-                paramCount++;
-                updates.push(`start_date = $${paramCount}`);
-                values.push(start_date);
+                if (start_date === null || start_date === '') {
+                    updates.push(`start_date = NULL`);
+                } else {
+                    paramCount++;
+                    updates.push(`start_date = $${paramCount}::timestamp with time zone`);
+                    values.push(start_date);
+                }
             }
             if (end_date !== undefined) {
-                paramCount++;
-                updates.push(`end_date = $${paramCount}`);
-                values.push(end_date);
+                if (end_date === null || end_date === '') {
+                    updates.push(`end_date = NULL`);
+                } else {
+                    paramCount++;
+                    updates.push(`end_date = $${paramCount}::timestamp with time zone`);
+                    values.push(end_date);
+                }
             }
 
             if (updates.length === 0) {
@@ -251,8 +261,10 @@ export class AdsService {
                 );
             }
 
-            paramCount++;
+            // Add updated_at (no parameter needed for NOW())
             updates.push(`updated_at = NOW()`);
+
+            // Add WHERE clause with id parameter
             paramCount++;
             values.push(id);
 
