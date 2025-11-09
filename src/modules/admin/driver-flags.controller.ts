@@ -27,7 +27,11 @@ export class DriverFlagsController {
         driverId: string;
         driverUserId: string;
         driverName: string;
+        driverPhone?: string;
         deactivationReason: string;
+        deactivatedBy?: string;
+        deactivationId?: string;
+        flagId?: string;
     }) {
         this.socketGateway.broadcastDriverDeactivated(driverData);
         return { success: true, message: 'Deactivation broadcasted' };

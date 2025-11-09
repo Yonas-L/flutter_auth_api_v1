@@ -771,7 +771,11 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         driverId: string;
         driverUserId: string;
         driverName: string;
+        driverPhone?: string;
         deactivationReason: string;
+        deactivatedBy?: string;
+        deactivationId?: string;
+        flagId?: string;
     }) {
         try {
             this.logger.log(`📡 Broadcasting driver deactivated: ${driverData.driverId}`);
@@ -787,13 +791,18 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 driverSocket.disconnect();
             }
 
-            // Broadcast to all dashboard clients (admins)
+            // Broadcast to all dashboard clients (admins and super admins)
+            // Super admins will see all deactivations, regular admins will also see them
             this.dashboardClients.forEach((dashboardClient) => {
                 dashboardClient.emit('driver:deactivated', {
                     driverId: driverData.driverId,
                     driverUserId: driverData.driverUserId,
                     driverName: driverData.driverName,
+                    driverPhone: driverData.driverPhone,
                     deactivationReason: driverData.deactivationReason,
+                    deactivatedBy: driverData.deactivatedBy,
+                    deactivationId: driverData.deactivationId,
+                    flagId: driverData.flagId,
                     timestamp: new Date().toISOString(),
                 });
             });
