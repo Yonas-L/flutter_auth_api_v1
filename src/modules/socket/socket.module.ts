@@ -11,7 +11,7 @@ import { TripsModule } from '../trips/trips.module';
     imports: [
         AuthModule,
         DatabaseModule,
-        DriverProfilesModule,
+        forwardRef(() => DriverProfilesModule), // Import DriverProfilesModule with forwardRef to resolve circular dependency
         forwardRef(() => TripsModule), // Import TripsModule with forwardRef to resolve circular dependency
         JwtModule.registerAsync({
             inject: [ConfigService],

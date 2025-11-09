@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, Logger, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger, ModuleRef } from '@nestjs/common';
 import { PostgresService } from '../database/postgres.service';
 import { DepositRequestDto, WithdrawalRequestDto, TransactionQueryDto } from './dto/wallet.dto';
 import { ChapaService, ChapaPaymentRequest } from './chapa.service';
@@ -8,13 +8,25 @@ import { v4 as uuidv4 } from 'uuid';
 @Injectable()
 export class WalletService {
   private readonly logger = new Logger(WalletService.name);
+  private socketGateway: SocketGateway | null = null;
 
   constructor(
     private readonly postgresService: PostgresService,
     private readonly chapaService: ChapaService,
-    @Inject(forwardRef(() => SocketGateway))
-    private readonly socketGateway: SocketGateway,
+    private readonly moduleRef: ModuleRef,
   ) { }
+
+  private getSocketGateway(): SocketGateway | null {
+    if (!this.socketGateway) {
+      try {
+        this.socketGateway = this.moduleRef.get(SocketGateway, { strict: false });
+      } catch (error) {
+        this.logger.warn('SocketGateway not available, wallet updates will not be sent via socket');
+        return null;
+      }
+    }
+    return this.socketGateway;
+  }
 
   async getWalletBalance(userId: string) {
     try {
@@ -441,18 +453,21 @@ export class WalletService {
 
           // Emit socket event for real-time wallet update
           try {
-            const driverSocket = this.socketGateway.getDriverById(transaction.user_id);
-            if (driverSocket) {
-              driverSocket.emit('wallet:transaction_updated', {
-                transaction_id: transaction.id,
-                type: 'deposit',
-                status: 'success',
-                amount_cents: transaction.amount_cents,
-                balance_cents: newBalance,
-                chapa_tx_ref: chapaTransactionRef,
-                message: 'Payment completed successfully',
-              });
-              this.logger.log(`📡 Emitted wallet transaction update to user ${transaction.user_id}`);
+            const socketGateway = this.getSocketGateway();
+            if (socketGateway) {
+              const driverSocket = socketGateway.getDriverById(transaction.user_id);
+              if (driverSocket) {
+                driverSocket.emit('wallet:transaction_updated', {
+                  transaction_id: transaction.id,
+                  type: 'deposit',
+                  status: 'success',
+                  amount_cents: transaction.amount_cents,
+                  balance_cents: newBalance,
+                  chapa_tx_ref: chapaTransactionRef,
+                  message: 'Payment completed successfully',
+                });
+                this.logger.log(`📡 Emitted wallet transaction update to user ${transaction.user_id}`);
+              }
             }
           } catch (socketError) {
             this.logger.warn(`Failed to emit wallet update socket event: ${socketError.message}`);
@@ -466,17 +481,20 @@ export class WalletService {
 
           // Emit socket event for failed transaction
           try {
-            const driverSocket = this.socketGateway.getDriverById(transaction.user_id);
-            if (driverSocket) {
-              driverSocket.emit('wallet:transaction_updated', {
-                transaction_id: transaction.id,
-                type: 'deposit',
-                status: 'failed',
-                amount_cents: transaction.amount_cents,
-                chapa_tx_ref: chapaTransactionRef,
-                message: 'Payment failed',
-              });
-              this.logger.log(`📡 Emitted wallet transaction failed event to user ${transaction.user_id}`);
+            const socketGateway = this.getSocketGateway();
+            if (socketGateway) {
+              const driverSocket = socketGateway.getDriverById(transaction.user_id);
+              if (driverSocket) {
+                driverSocket.emit('wallet:transaction_updated', {
+                  transaction_id: transaction.id,
+                  type: 'deposit',
+                  status: 'failed',
+                  amount_cents: transaction.amount_cents,
+                  chapa_tx_ref: chapaTransactionRef,
+                  message: 'Payment failed',
+                });
+                this.logger.log(`📡 Emitted wallet transaction failed event to user ${transaction.user_id}`);
+              }
             }
           } catch (socketError) {
             this.logger.warn(`Failed to emit wallet update socket event: ${socketError.message}`);
