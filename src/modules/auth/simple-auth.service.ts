@@ -66,21 +66,27 @@ export class SimpleAuthService {
                 return this.generateAuthResult(user, 'register-1');
             }
 
-            // Check if user account is deactivated
+            // Check if user account is deactivated - fetch full user data with account_status
             const userWithStatus = await this.postgresService.query(
-                `SELECT account_status, deactivation_reason FROM users WHERE id = $1`,
+                `SELECT account_status, deactivation_reason, is_active FROM users WHERE id = $1`,
                 [user.id]
             );
             
             if (userWithStatus.rows.length > 0) {
                 const accountStatus = userWithStatus.rows[0].account_status;
                 const deactivationReason = userWithStatus.rows[0].deactivation_reason;
+                const isActive = userWithStatus.rows[0].is_active;
                 
-                if (accountStatus === 'deactivated' || !user.is_active) {
+                // Update user object with account_status and deactivation_reason
+                (user as any).account_status = accountStatus;
+                (user as any).deactivation_reason = deactivationReason;
+                
+                // If account is deactivated, redirect to deactivated screen instead of throwing error
+                if (accountStatus === 'deactivated' || !isActive) {
                     this.logger.warn(`❌ Login attempt for deactivated account: ${user.id}`);
-                    throw new Error(
-                        `Your account has been deactivated. Please contact the office.${deactivationReason ? ` Reason: ${deactivationReason}` : ''}`
-                    );
+                    // Don't throw error - instead return user with redirectTo set to account-deactivated
+                    // This allows the frontend to show the deactivated screen
+                    return await this.generateAuthResult(user, 'account-deactivated');
                 }
             }
 
@@ -92,7 +98,7 @@ export class SimpleAuthService {
 
             this.logger.log(`✅ User authenticated: ${user.id}, redirecting to: ${redirectTo}`);
 
-            return this.generateAuthResult(user, redirectTo);
+            return await this.generateAuthResult(user, redirectTo);
 
         } catch (error) {
             this.logger.error(`❌ Authentication failed for ${phoneE164}:`, error);
@@ -127,7 +133,31 @@ export class SimpleAuthService {
                 }
 
                 // New user should go to registration
-                return this.generateAuthResult(user, 'register-1');
+                return await this.generateAuthResult(user, 'register-1');
+            }
+
+            // Check if user account is deactivated - fetch full user data with account_status
+            const userWithStatus = await this.postgresService.query(
+                `SELECT account_status, deactivation_reason, is_active FROM users WHERE id = $1`,
+                [user.id]
+            );
+            
+            if (userWithStatus.rows.length > 0) {
+                const accountStatus = userWithStatus.rows[0].account_status;
+                const deactivationReason = userWithStatus.rows[0].deactivation_reason;
+                const isActive = userWithStatus.rows[0].is_active;
+                
+                // Update user object with account_status and deactivation_reason
+                (user as any).account_status = accountStatus;
+                (user as any).deactivation_reason = deactivationReason;
+                
+                // If account is deactivated, redirect to deactivated screen instead of throwing error
+                if (accountStatus === 'deactivated' || !isActive) {
+                    this.logger.warn(`❌ Login attempt for deactivated account: ${user.id}`);
+                    // Don't throw error - instead return user with redirectTo set to account-deactivated
+                    // This allows the frontend to show the deactivated screen
+                    return await this.generateAuthResult(user, 'account-deactivated');
+                }
             }
 
             // Update last login
@@ -138,7 +168,7 @@ export class SimpleAuthService {
 
             this.logger.log(`✅ User authenticated: ${user.id}, redirecting to: ${redirectTo}`);
 
-            return this.generateAuthResult(user, redirectTo);
+            return await this.generateAuthResult(user, redirectTo);
 
         } catch (error) {
             this.logger.error(`❌ Authentication failed for ${email}:`, error);
@@ -277,7 +307,7 @@ export class SimpleAuthService {
         }
     }
 
-    private generateAuthResult(user: any, redirectTo: string): AuthResult {
+    private async generateAuthResult(user: any, redirectTo: string): Promise<AuthResult> {
         // Generate tokens
         const payload = {
             sub: user.id,
@@ -296,6 +326,32 @@ export class SimpleAuthService {
             expiresIn: this.configService.get('REFRESH_EXPIRES_IN') || '7d',
         });
 
+        // Get account_status and deactivation info
+        let accountStatus = (user as any).account_status;
+        let deactivationReason = (user as any).deactivation_reason;
+        let flagId = null;
+
+        // If account is deactivated, get the flag_id from the most recent active flag
+        if (accountStatus === 'deactivated') {
+            try {
+                const flagQuery = `
+                    SELECT df.id 
+                    FROM driver_flags df
+                    JOIN driver_profiles dp ON df.driver_id = dp.id
+                    WHERE dp.user_id = $1 
+                    AND df.status IN ('pending', 'under_review')
+                    ORDER BY df.created_at DESC
+                    LIMIT 1
+                `;
+                const flagResult = await this.postgresService.query(flagQuery, [user.id]);
+                if (flagResult.rows.length > 0) {
+                    flagId = flagResult.rows[0].id;
+                }
+            } catch (error) {
+                this.logger.error(`Error fetching flag_id for deactivated user ${user.id}:`, error);
+            }
+        }
+
         return {
             accessToken,
             refreshToken,
@@ -308,6 +364,9 @@ export class SimpleAuthService {
                 status: user.status,
                 isPhoneVerified: user.is_phone_verified,
                 isEmailVerified: user.is_email_verified,
+                account_status: accountStatus,
+                deactivation_reason: deactivationReason,
+                flag_id: flagId,
             },
             redirectTo,
         };
