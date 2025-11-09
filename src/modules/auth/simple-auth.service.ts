@@ -66,6 +66,24 @@ export class SimpleAuthService {
                 return this.generateAuthResult(user, 'register-1');
             }
 
+            // Check if user account is deactivated
+            const userWithStatus = await this.postgresService.query(
+                `SELECT account_status, deactivation_reason FROM users WHERE id = $1`,
+                [user.id]
+            );
+            
+            if (userWithStatus.rows.length > 0) {
+                const accountStatus = userWithStatus.rows[0].account_status;
+                const deactivationReason = userWithStatus.rows[0].deactivation_reason;
+                
+                if (accountStatus === 'deactivated' || !user.is_active) {
+                    this.logger.warn(`❌ Login attempt for deactivated account: ${user.id}`);
+                    throw new Error(
+                        `Your account has been deactivated. Please contact the office.${deactivationReason ? ` Reason: ${deactivationReason}` : ''}`
+                    );
+                }
+            }
+
             // Update last login
             await this.usersRepository.updateLastLogin(user.id);
 

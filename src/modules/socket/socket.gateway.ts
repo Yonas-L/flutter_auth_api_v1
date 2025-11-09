@@ -33,6 +33,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly connectedDrivers = new Map<string, AuthenticatedSocket>();
     private readonly availableDrivers = new Map<string, AuthenticatedSocket>();
     private readonly dashboardClients = new Map<string, Socket>();
+    private readonly dashboardAdminIds = new Map<string, string>(); // Track which admin is connected to which socket
 
     constructor(
         private jwtService: JwtService,
@@ -58,11 +59,32 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 return;
             }
 
-            // Handle dashboard connections without authentication
-            if (isDashboardConnection && !token) {
+            // Handle dashboard connections - can have optional admin authentication
+            if (isDashboardConnection) {
                 this.dashboardClients.set(client.id, client);
-                this.logger.log(`📊 Dashboard client connected: ${client.id} (Total dashboard clients: ${this.dashboardClients.size})`);
-                this.logger.log(`📊 Dashboard client query:`, client.handshake.query);
+                
+                // If token is provided, extract admin user ID
+                if (token) {
+                    try {
+                        const payload = this.jwtService.verify(token);
+                        const adminUserId = payload.sub || payload.id;
+                        
+                        if (adminUserId) {
+                            // Verify user is an admin
+                            const adminUser = await this.usersRepository.findById(adminUserId);
+                            if (adminUser && ['admin', 'super_admin', 'customer_support'].includes(adminUser.user_type)) {
+                                this.dashboardAdminIds.set(client.id, adminUserId);
+                                this.logger.log(`📊 Dashboard client connected with admin auth: ${client.id} (Admin: ${adminUserId})`);
+                            }
+                        }
+                    } catch (error) {
+                        this.logger.warn(`📊 Dashboard client connected without valid admin token: ${client.id}`);
+                    }
+                } else {
+                    this.logger.log(`📊 Dashboard client connected without authentication: ${client.id}`);
+                }
+                
+                this.logger.log(`📊 Total dashboard clients: ${this.dashboardClients.size}`);
                 client.emit('dashboard:connected', {
                     message: 'Connected to dashboard',
                     timestamp: new Date().toISOString()
@@ -98,6 +120,22 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             // Check if user is active
             if (!user.is_active) {
                 this.logger.warn(`Connection rejected: User account deactivated for ${client.id}: ${userId}`);
+                client.emit('account_deactivated', {
+                    message: 'Your account has been deactivated. Please contact the office.',
+                    reason: (user as any).deactivation_reason || 'Account has been deactivated'
+                });
+                client.disconnect();
+                return;
+            }
+
+            // Check account_status for deactivation
+            if ((user as any).account_status === 'deactivated') {
+                this.logger.warn(`Connection rejected: User account status is deactivated for ${client.id}: ${userId}`);
+                const deactivationReason = (user as any).deactivation_reason || 'Account has been deactivated';
+                client.emit('account_deactivated', {
+                    message: 'Your account has been deactivated. Please contact the office.',
+                    reason: deactivationReason
+                });
                 client.disconnect();
                 return;
             }
@@ -134,6 +172,14 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     async handleDisconnect(client: Socket) {
         const authClient = client as AuthenticatedSocket;
+        
+        // Remove dashboard client if it was one
+        if (this.dashboardClients.has(client.id)) {
+            this.dashboardClients.delete(client.id);
+            this.dashboardAdminIds.delete(client.id);
+            this.logger.log(`📊 Dashboard client disconnected: ${client.id}`);
+        }
+        
         if (authClient.userId) {
             // Remove from connected drivers
             this.connectedDrivers.delete(authClient.userId);
@@ -149,12 +195,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             });
 
             this.logger.log(`Driver ${authClient.userId} disconnected`);
-        } else {
-            // Check if it's a dashboard client
-            if (this.dashboardClients.has(client.id)) {
-                this.dashboardClients.delete(client.id);
-                this.logger.log(`Dashboard client disconnected: ${client.id} (Total dashboard clients: ${this.dashboardClients.size})`);
-            }
         }
     }
 
@@ -642,6 +682,125 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             this.logger.log(`📡 Broadcasted ticket created to ${this.dashboardClients.size} dashboard clients`);
         } catch (error) {
             this.logger.error(`❌ Error broadcasting ticket created:`, error);
+        }
+    }
+
+    /**
+     * Broadcast driver flag created event to assigned admin only
+     */
+    broadcastDriverFlagCreated(flagData: {
+        flagId: string;
+        driverId: string;
+        driverName: string;
+        flagReason: string;
+        priority: string;
+        reporterName?: string;
+        assignedToAdminId?: string;
+    }) {
+        try {
+            this.logger.log(`📡 Broadcasting driver flag created: ${flagData.flagId}`);
+
+            if (flagData.assignedToAdminId) {
+                // Broadcast only to the assigned admin
+                let sentToAdmin = false;
+                this.dashboardClients.forEach((dashboardClient, socketId) => {
+                    const adminId = this.dashboardAdminIds.get(socketId);
+                    
+                    // Only send to the assigned admin if we know their admin ID
+                    // If admin ID matches or if we don't have admin ID tracking (fallback to all)
+                    if (!adminId || adminId === flagData.assignedToAdminId) {
+                        dashboardClient.emit('driver:flag_created', {
+                            flagId: flagData.flagId,
+                            driverId: flagData.driverId,
+                            driverName: flagData.driverName,
+                            flagReason: flagData.flagReason,
+                            priority: flagData.priority,
+                            reporterName: flagData.reporterName,
+                            assignedToAdminId: flagData.assignedToAdminId,
+                            timestamp: new Date().toISOString(),
+                        });
+                        
+                        if (adminId === flagData.assignedToAdminId) {
+                            sentToAdmin = true;
+                        }
+                    }
+                });
+
+                if (sentToAdmin) {
+                    this.logger.log(`📡 Broadcasted driver flag created to assigned admin: ${flagData.assignedToAdminId}`);
+                } else {
+                    // If admin not found, broadcast to all (they may not be authenticated yet)
+                    this.logger.warn(`⚠️ Assigned admin ${flagData.assignedToAdminId} not found in connected clients, broadcasting to all`);
+                    this.dashboardClients.forEach((dashboardClient) => {
+                        dashboardClient.emit('driver:flag_created', {
+                            flagId: flagData.flagId,
+                            driverId: flagData.driverId,
+                            driverName: flagData.driverName,
+                            flagReason: flagData.flagReason,
+                            priority: flagData.priority,
+                            reporterName: flagData.reporterName,
+                            assignedToAdminId: flagData.assignedToAdminId,
+                            timestamp: new Date().toISOString(),
+                        });
+                    });
+                }
+            } else {
+                // If no admin assigned, broadcast to all admins (fallback)
+                this.dashboardClients.forEach((dashboardClient) => {
+                    dashboardClient.emit('driver:flag_created', {
+                        flagId: flagData.flagId,
+                        driverId: flagData.driverId,
+                        driverName: flagData.driverName,
+                        flagReason: flagData.flagReason,
+                        priority: flagData.priority,
+                        reporterName: flagData.reporterName,
+                        timestamp: new Date().toISOString(),
+                    });
+                });
+                this.logger.log(`📡 Broadcasted driver flag created to all ${this.dashboardClients.size} dashboard clients (no assigned admin)`);
+            }
+        } catch (error) {
+            this.logger.error(`❌ Error broadcasting driver flag created:`, error);
+        }
+    }
+
+    /**
+     * Broadcast driver deactivated event
+     */
+    broadcastDriverDeactivated(driverData: {
+        driverId: string;
+        driverUserId: string;
+        driverName: string;
+        deactivationReason: string;
+    }) {
+        try {
+            this.logger.log(`📡 Broadcasting driver deactivated: ${driverData.driverId}`);
+
+            // Broadcast to driver's socket if connected
+            const driverSocket = this.connectedDrivers.get(driverData.driverUserId);
+            if (driverSocket) {
+                driverSocket.emit('account_deactivated', {
+                    message: 'Your account has been deactivated. Please contact the office.',
+                    reason: driverData.deactivationReason,
+                    timestamp: new Date().toISOString(),
+                });
+                driverSocket.disconnect();
+            }
+
+            // Broadcast to all dashboard clients (admins)
+            this.dashboardClients.forEach((dashboardClient) => {
+                dashboardClient.emit('driver:deactivated', {
+                    driverId: driverData.driverId,
+                    driverUserId: driverData.driverUserId,
+                    driverName: driverData.driverName,
+                    deactivationReason: driverData.deactivationReason,
+                    timestamp: new Date().toISOString(),
+                });
+            });
+
+            this.logger.log(`📡 Broadcasted driver deactivated to ${this.dashboardClients.size} dashboard clients`);
+        } catch (error) {
+            this.logger.error(`❌ Error broadcasting driver deactivated:`, error);
         }
     }
 

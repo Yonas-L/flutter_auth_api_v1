@@ -44,6 +44,13 @@ export class JwtPostgresStrategy extends PassportStrategy(Strategy, 'jwt-postgre
                 throw new UnauthorizedException('User account is deactivated');
             }
 
+            // Check account_status for deactivation
+            if ((user as any).account_status === 'deactivated') {
+                this.logger.warn(`❌ User account status is deactivated: ${userId}`);
+                const deactivationReason = (user as any).deactivation_reason || 'Account has been deactivated';
+                throw new UnauthorizedException(`Your account has been deactivated. Please contact the office. Reason: ${deactivationReason}`);
+            }
+
             // Check if user is verified (optional - you might want to allow unverified users)
             if (user.status === 'deleted') {
                 this.logger.warn(`❌ User account deleted: ${userId}`);

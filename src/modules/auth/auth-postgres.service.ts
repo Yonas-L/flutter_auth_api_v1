@@ -5,6 +5,7 @@ import { UsersPostgresRepository } from '../database/repositories/users-postgres
 import { UserStatusSyncService } from '../users/user-status-sync.service';
 import { OtpService } from '../otp/otp.service';
 import { AfroMessageService } from '../otp/afro-message.service';
+import { PostgresService } from '../database/postgres.service';
 import * as bcrypt from 'bcrypt';
 
 export interface AuthTokens {
@@ -41,6 +42,7 @@ export class AuthPostgresService {
         private userStatusSyncService: UserStatusSyncService,
         private otpService: OtpService,
         private afroMessageService: AfroMessageService,
+        private postgresService: PostgresService,
     ) { }
 
     /**
@@ -98,6 +100,24 @@ export class AuthPostgresService {
                 });
                 this.logger.log(`✅ Created new driver user: ${user.id}`);
             } else {
+                // Check if user account is deactivated
+                const userWithStatus = await this.postgresService.query(
+                    `SELECT account_status, deactivation_reason FROM users WHERE id = $1`,
+                    [user.id]
+                );
+                
+                if (userWithStatus.rows.length > 0) {
+                    const accountStatus = userWithStatus.rows[0].account_status;
+                    const deactivationReason = userWithStatus.rows[0].deactivation_reason;
+                    
+                    if (accountStatus === 'deactivated' || !user.is_active) {
+                        this.logger.warn(`❌ Login attempt for deactivated account: ${user.id}`);
+                        throw new UnauthorizedException(
+                            `Your account has been deactivated. Please contact the office.${deactivationReason ? ` Reason: ${deactivationReason}` : ''}`
+                        );
+                    }
+                }
+                
                 // Update last login and verification status
                 await this.usersRepository.updateLastLogin(user.id);
                 if (!user.is_phone_verified) {
@@ -143,6 +163,24 @@ export class AuthPostgresService {
                 // Sync status across related tables
                 await this.userStatusSyncService.syncUserStatus(user.id, 'verified');
             } else {
+                // Check if user account is deactivated
+                const userWithStatus = await this.postgresService.query(
+                    `SELECT account_status, deactivation_reason FROM users WHERE id = $1`,
+                    [user.id]
+                );
+                
+                if (userWithStatus.rows.length > 0) {
+                    const accountStatus = userWithStatus.rows[0].account_status;
+                    const deactivationReason = userWithStatus.rows[0].deactivation_reason;
+                    
+                    if (accountStatus === 'deactivated' || !user.is_active) {
+                        this.logger.warn(`❌ Login attempt for deactivated account: ${user.id}`);
+                        throw new UnauthorizedException(
+                            `Your account has been deactivated. Please contact the office.${deactivationReason ? ` Reason: ${deactivationReason}` : ''}`
+                        );
+                    }
+                }
+                
                 // Update last login and verification status
                 await this.usersRepository.updateLastLogin(user.id);
                 if (!user.is_phone_verified) {
