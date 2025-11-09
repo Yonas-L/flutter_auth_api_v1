@@ -5,8 +5,10 @@ import { VehiclesPostgresRepository } from '../database/repositories/vehicles-po
 import { DocumentsRepository } from '../database/repositories/documents.repository';
 import { CreateDriverProfileDto } from './dto/create-driver-profile.dto';
 import { UpdateDriverProfileDto } from './dto/update-driver-profile.dto';
-import { DriverProfileResponseDto, DriverRegistrationProgressDto, DriverStatsDto } from './dto/driver-profile-response.dto';
+import { DriverProfileResponseDto, DriverRegistrationProgressDto, DriverStatsDto, DriverDashboardStatsDto } from './dto/driver-profile-response.dto';
 import { DriverProfile } from '../database/entities/driver-profile.entity';
+import { PostgresService } from '../database/postgres.service';
+import { WalletService } from '../wallet/wallet.service';
 
 @Injectable()
 export class DriverProfilesService {
@@ -17,6 +19,8 @@ export class DriverProfilesService {
     private readonly usersRepository: UsersRepository,
     private readonly vehiclesRepository: VehiclesPostgresRepository,
     private readonly documentsRepository: DocumentsRepository,
+    private readonly postgresService: PostgresService,
+    private readonly walletService: WalletService,
   ) { }
 
   /**
@@ -341,6 +345,112 @@ export class DriverProfilesService {
       this.logger.log(`✅ Trip stats updated for user ${userId}: trips=${profile.total_trips + 1}, earnings=${finalTotalEarnings}`);
     } catch (error) {
       this.logger.error(`Error updating trip stats for user ${userId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get driver dashboard statistics (balance, today's earnings, acceptance rate)
+   */
+  async getDashboardStats(userId: string): Promise<DriverDashboardStatsDto> {
+    try {
+      // Get driver profile
+      const profile = await this.driverProfilesRepository.findByUserId(userId);
+      if (!profile) {
+        throw new NotFoundException('Driver profile not found');
+      }
+
+      // Get wallet balance
+      let balance = 0;
+      try {
+        const walletBalance = await this.walletService.getWalletBalance(userId);
+        balance = walletBalance.balance || 0;
+      } catch (error) {
+        this.logger.warn(`Failed to get wallet balance for user ${userId}:`, error);
+        balance = 0;
+      }
+
+      // Get today's earnings (last 24 hours)
+      const client = await this.postgresService.getClient();
+      let todayEarnings = 0;
+      let acceptanceRate = 0;
+
+      try {
+        const twentyFourHoursAgo = new Date();
+        twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+
+        // Get completed trips in last 24 hours with driver earnings
+        const todayEarningsQuery = `
+          SELECT COALESCE(SUM(driver_earnings_cents), 0) as earnings_cents
+          FROM trips
+          WHERE driver_id = $1
+            AND status = 'completed'
+            AND completed_at >= $2
+            AND driver_earnings_cents IS NOT NULL
+        `;
+        const earningsResult = await client.query(todayEarningsQuery, [profile.id, twentyFourHoursAgo]);
+        todayEarnings = parseFloat(earningsResult.rows[0]?.earnings_cents || '0') / 100;
+
+        // Calculate acceptance rate based on support trips
+        // Support trips are trips that were requested (broadcast by customer support)
+        // and either accepted or declined by this driver
+        // For a more accurate calculation, we'll look at:
+        // 1. Trips accepted by this driver (support trips)
+        // 2. Trips declined by this driver (canceled by this driver)
+        
+        // Get all support trips that were assigned to this driver
+        // Support trips have request_timestamp and were either accepted or declined by this driver
+        const totalSupportTripsQuery = `
+          SELECT 
+            COUNT(*) FILTER (WHERE status IN ('accepted', 'in_progress', 'completed') AND accepted_at IS NOT NULL) as accepted_count,
+            COUNT(*) FILTER (WHERE status = 'canceled' AND canceled_by_user_id = (SELECT user_id FROM driver_profiles WHERE id = $1)) as declined_count
+          FROM trips
+          WHERE driver_id = $1
+            AND request_timestamp IS NOT NULL
+            AND EXTRACT(EPOCH FROM (COALESCE(accepted_at, canceled_at, created_at) - request_timestamp)) >= 0
+        `;
+        const supportTripsResult = await client.query(totalSupportTripsQuery, [profile.id]);
+        const acceptedCount = parseInt(supportTripsResult.rows[0]?.accepted_count || '0', 10);
+        const declinedCount = parseInt(supportTripsResult.rows[0]?.declined_count || '0', 10);
+
+        // Calculate acceptance rate
+        // Acceptance rate = (Accepted trips / (Accepted + Declined trips)) * 100
+        const totalSupportTrips = acceptedCount + declinedCount;
+        if (totalSupportTrips > 0) {
+          acceptanceRate = (acceptedCount / totalSupportTrips) * 100;
+        } else {
+          // If no support trips yet, check if driver has any completed trips
+          // If yes, assume good acceptance rate (could be improved with actual tracking)
+          const hasCompletedTripsQuery = `
+            SELECT COUNT(*) as completed_count
+            FROM trips
+            WHERE driver_id = $1
+              AND status = 'completed'
+          `;
+          const completedResult = await client.query(hasCompletedTripsQuery, [profile.id]);
+          const completedCount = parseInt(completedResult.rows[0]?.completed_count || '0', 10);
+          // Default to 100% for new drivers, 95% if they have completed trips
+          acceptanceRate = completedCount > 0 ? 95.0 : 100.0;
+        }
+
+        // Round acceptance rate to 2 decimal places
+        acceptanceRate = Math.round(acceptanceRate * 100) / 100;
+      } catch (error) {
+        this.logger.error(`Error calculating dashboard stats for user ${userId}:`, error);
+        // Set defaults on error
+        todayEarnings = 0;
+        acceptanceRate = 100;
+      } finally {
+        client.release();
+      }
+
+      return new DriverDashboardStatsDto({
+        balance,
+        todayEarnings,
+        acceptanceRate,
+      });
+    } catch (error) {
+      this.logger.error(`Error getting dashboard stats for user ${userId}:`, error);
       throw error;
     }
   }

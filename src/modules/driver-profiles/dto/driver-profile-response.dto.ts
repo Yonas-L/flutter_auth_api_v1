@@ -59,3 +59,13 @@ export class DriverStatsDto {
     Object.assign(this, partial);
   }
 }
+
+export class DriverDashboardStatsDto {
+  balance: number; // Wallet balance in ETB
+  todayEarnings: number; // Today's earnings in ETB (last 24 hours)
+  acceptanceRate: number; // Acceptance rate percentage (0-100)
+
+  constructor(partial: Partial<DriverDashboardStatsDto>) {
+    Object.assign(this, partial);
+  }
+}

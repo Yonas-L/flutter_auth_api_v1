@@ -16,7 +16,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { DriverProfilesService } from './driver-profiles.service';
 import { CreateDriverProfileDto } from './dto/create-driver-profile.dto';
 import { UpdateDriverProfileDto } from './dto/update-driver-profile.dto';
-import { DriverProfileResponseDto, DriverRegistrationProgressDto, DriverStatsDto } from './dto/driver-profile-response.dto';
+import { DriverProfileResponseDto, DriverRegistrationProgressDto, DriverStatsDto, DriverDashboardStatsDto } from './dto/driver-profile-response.dto';
 
 @Controller('api/driver-profiles')
 export class DriverProfilesController {
@@ -207,6 +207,25 @@ export class DriverProfilesController {
         throw error;
       }
       throw new HttpException('Failed to get driver stats', HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+  }
+
+  /**
+   * Get driver dashboard statistics (balance, today's earnings, acceptance rate)
+   */
+  @Get('stats/dashboard')
+  @UseGuards(AuthGuard('jwt-postgres'))
+  async getDashboardStats(@Request() req: any): Promise<DriverDashboardStatsDto> {
+    try {
+      const userId = req.user.id;
+      const stats = await this.driverProfilesService.getDashboardStats(userId);
+      return stats;
+    } catch (error) {
+      this.logger.error('Error getting dashboard stats:', error);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      throw new HttpException('Failed to get dashboard stats', HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
