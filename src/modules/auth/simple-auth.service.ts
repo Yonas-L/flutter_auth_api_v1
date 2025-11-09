@@ -19,6 +19,7 @@ export interface AuthResult {
         account_status?: string | null;
         deactivation_reason?: string | null;
         flag_id?: string | null;
+        avatar_url?: string | null;
     };
     redirectTo: string;
 }
@@ -386,6 +387,7 @@ export class SimpleAuthService {
                 account_status: accountStatus,
                 deactivation_reason: deactivationReason,
                 flag_id: flagId,
+                avatar_url: user.avatar_url || null,
             },
             redirectTo,
         };
