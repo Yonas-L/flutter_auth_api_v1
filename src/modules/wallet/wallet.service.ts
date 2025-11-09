@@ -1,7 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PostgresService } from '../database/postgres.service';
 import { DepositRequestDto, WithdrawalRequestDto, TransactionQueryDto } from './dto/wallet.dto';
 import { ChapaService, ChapaPaymentRequest } from './chapa.service';
+import { SocketGateway } from '../socket/socket.gateway';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -11,6 +12,8 @@ export class WalletService {
   constructor(
     private readonly postgresService: PostgresService,
     private readonly chapaService: ChapaService,
+    @Inject(forwardRef(() => SocketGateway))
+    private readonly socketGateway: SocketGateway,
   ) { }
 
   async getWalletBalance(userId: string) {
@@ -169,9 +172,24 @@ export class WalletService {
 
       const walletId = walletResult.rows[0].id;
 
-      // Build query with optional type filter
+      // Build query with explicit field selection to ensure all required fields are returned
       let queryText = `
-        SELECT * FROM wallet_transactions 
+        SELECT 
+          id,
+          wallet_id,
+          type,
+          amount_cents,
+          balance_after_cents,
+          reference_id,
+          reference_type,
+          description,
+          metadata,
+          chapa_tx_ref,
+          chapa_status,
+          payment_method,
+          created_at,
+          updated_at
+        FROM wallet_transactions 
         WHERE wallet_id = $1
       `;
       const queryParams = [walletId];
@@ -420,12 +438,49 @@ export class WalletService {
           );
 
           this.logger.log(`Wallet balance updated for user ${transaction.user_id}. New balance: ${newBalance} cents`);
+
+          // Emit socket event for real-time wallet update
+          try {
+            const driverSocket = this.socketGateway.getDriverById(transaction.user_id);
+            if (driverSocket) {
+              driverSocket.emit('wallet:transaction_updated', {
+                transaction_id: transaction.id,
+                type: 'deposit',
+                status: 'success',
+                amount_cents: transaction.amount_cents,
+                balance_cents: newBalance,
+                chapa_tx_ref: chapaTransactionRef,
+                message: 'Payment completed successfully',
+              });
+              this.logger.log(`📡 Emitted wallet transaction update to user ${transaction.user_id}`);
+            }
+          } catch (socketError) {
+            this.logger.warn(`Failed to emit wallet update socket event: ${socketError.message}`);
+          }
         } else {
           // Mark transaction as failed
           await client.query(
             'UPDATE wallet_transactions SET chapa_status = $1, processed_at = NOW(), updated_at = NOW() WHERE id = $2',
             ['failed', transaction.id]
           );
+
+          // Emit socket event for failed transaction
+          try {
+            const driverSocket = this.socketGateway.getDriverById(transaction.user_id);
+            if (driverSocket) {
+              driverSocket.emit('wallet:transaction_updated', {
+                transaction_id: transaction.id,
+                type: 'deposit',
+                status: 'failed',
+                amount_cents: transaction.amount_cents,
+                chapa_tx_ref: chapaTransactionRef,
+                message: 'Payment failed',
+              });
+              this.logger.log(`📡 Emitted wallet transaction failed event to user ${transaction.user_id}`);
+            }
+          } catch (socketError) {
+            this.logger.warn(`Failed to emit wallet update socket event: ${socketError.message}`);
+          }
         }
 
         return {
