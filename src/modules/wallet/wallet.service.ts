@@ -296,6 +296,28 @@ export class WalletService {
 
       this.logger.log(`Chapa payment initialized successfully: ${chapaResponse.data.checkout_url}`);
 
+      // Emit socket event for new transaction creation
+      try {
+        const socketGateway = this.getSocketGateway();
+        if (socketGateway) {
+          const driverSocket = socketGateway.getDriverById(userId);
+          if (driverSocket) {
+            driverSocket.emit('wallet:transaction_created', {
+              transaction_id: transactionId,
+              type: 'deposit',
+              amount_cents: depositAmountCents,
+              balance_cents: newBalanceCents,
+              chapa_tx_ref: chapaTransactionRef,
+              status: 'pending',
+              message: 'New deposit transaction created',
+            });
+            this.logger.log(`📡 Emitted wallet transaction created event to user ${userId}`);
+          }
+        }
+      } catch (socketError) {
+        this.logger.warn(`Failed to emit wallet transaction created event: ${socketError.message}`);
+      }
+
       return {
         transaction_id: transactionId,
         chapa_tx_ref: chapaTransactionRef,
