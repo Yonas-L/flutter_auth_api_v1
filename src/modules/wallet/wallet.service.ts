@@ -57,28 +57,16 @@ export class WalletService {
 
       const wallet = walletResult.rows[0];
 
-      // Calculate actual balance from transactions (source of truth)
-      // This ensures balance is accurate even if wallet_accounts.balance_cents is out of sync
-      // Strategy: Sum all deposits (excluding pending/failed) and subtract withdrawals
+      // Calculate balance by simply summing ALL amount_cents from deposit transactions
+      // No status filtering - sum all deposits regardless of chapa_status
       const balanceResult = await this.postgresService.query(
         `SELECT 
           COALESCE(SUM(
             CASE 
-              -- Deposits: count if success or NULL (manual deposits), exclude pending/failed
-              WHEN type = 'deposit' THEN 
-                CASE 
-                  WHEN chapa_status = 'success' THEN amount_cents
-                  WHEN chapa_status IS NULL THEN amount_cents  -- Manual deposits or old records
-                  WHEN chapa_status = 'pending' THEN 0  -- Don't count pending
-                  ELSE 0  -- Failed or other status
-                END
-              -- Withdrawals: subtract only if completed/success
-              WHEN type = 'withdrawal' THEN 
-                CASE 
-                  WHEN chapa_status = 'success' THEN -amount_cents
-                  WHEN chapa_status IS NULL THEN -amount_cents  -- Assume completed if no status
-                  ELSE 0  -- Pending or failed withdrawals
-                END
+              -- Deposits: Sum ALL deposits regardless of status
+              WHEN type = 'deposit' THEN amount_cents
+              -- Withdrawals: Subtract all withdrawals
+              WHEN type = 'withdrawal' THEN -amount_cents
               -- Credits: trip payouts, earnings, bonuses, refunds, adjustments
               WHEN type IN ('trip_payout', 'trip_earnings', 'bonus', 'refund', 'adjustment') THEN amount_cents
               -- Debits: trip payments
@@ -91,69 +79,21 @@ export class WalletService {
         [walletId]
       );
 
-      let calculatedBalanceCents = parseInt(
+      const calculatedBalanceCents = parseInt(
         balanceResult.rows[0]?.calculated_balance_cents || '0',
         10
       );
 
-      // Fallback: If balance is 0 but we have any deposit transactions, 
-      // try counting all deposits (except explicitly pending) - useful for manual entries
-      if (calculatedBalanceCents === 0) {
-        const depositCheckResult = await this.postgresService.query(
-          `SELECT COUNT(*) as deposit_count,
-                  SUM(CASE WHEN chapa_status != 'pending' OR chapa_status IS NULL THEN amount_cents ELSE 0 END) as total_deposits
-           FROM wallet_transactions
-           WHERE wallet_id = $1 AND type = 'deposit'`,
-          [walletId]
-        );
-
-        const depositCount = parseInt(depositCheckResult.rows[0]?.deposit_count || '0', 10);
-        const totalDeposits = parseInt(depositCheckResult.rows[0]?.total_deposits || '0', 10);
-
-        if (depositCount > 0 && totalDeposits > 0) {
-          // We have deposits, recalculate using a more permissive approach
-          const fallbackBalanceResult = await this.postgresService.query(
-            `SELECT 
-              COALESCE(SUM(
-                CASE 
-                  WHEN type = 'deposit' AND (chapa_status != 'pending' OR chapa_status IS NULL) THEN amount_cents
-                  WHEN type = 'withdrawal' AND (chapa_status = 'success' OR chapa_status IS NULL) THEN -amount_cents
-                  WHEN type IN ('trip_payout', 'trip_earnings', 'bonus', 'refund', 'adjustment') THEN amount_cents
-                  WHEN type = 'trip_payment' THEN -amount_cents
-                  ELSE 0
-                END
-              ), 0) as fallback_balance_cents
-             FROM wallet_transactions
-             WHERE wallet_id = $1`,
-            [walletId]
-          );
-
-          const fallbackBalance = parseInt(
-            fallbackBalanceResult.rows[0]?.fallback_balance_cents || '0',
-            10
-          );
-
-          if (fallbackBalance > 0) {
-            calculatedBalanceCents = fallbackBalance;
-            this.logger.log(
-              `Balance was 0 but deposits found. Using fallback calculation for user ${userId}: ${calculatedBalanceCents} cents`
-            );
-          }
-        }
-      }
-
-      // Update wallet_accounts balance if it's different from calculated balance
+      // Update wallet_accounts balance to match calculated balance from transactions
       // This keeps the table in sync for performance
-      if (wallet.balance_cents !== calculatedBalanceCents) {
-        this.logger.log(
-          `Balance mismatch for user ${userId}: stored=${wallet.balance_cents}, calculated=${calculatedBalanceCents}. Syncing...`
-        );
-        
-        await this.postgresService.query(
-          'UPDATE wallet_accounts SET balance_cents = $1, updated_at = NOW() WHERE id = $2',
-          [calculatedBalanceCents, walletId]
-        );
-      }
+      await this.postgresService.query(
+        'UPDATE wallet_accounts SET balance_cents = $1, updated_at = NOW() WHERE id = $2',
+        [calculatedBalanceCents, walletId]
+      );
+
+      this.logger.log(
+        `Wallet balance for user ${userId}: ${calculatedBalanceCents} cents (${calculatedBalanceCents / 100} ETB)`
+      );
 
       return {
         wallet_id: walletId,
@@ -266,13 +206,53 @@ export class WalletService {
       const [firstName, ...lastNameParts] = (user.full_name || 'User').split(' ');
       const lastName = lastNameParts.join(' ') || '';
 
-      // Get or create wallet
-      const wallet = await this.getWalletBalance(userId);
+      // Get or create wallet to get wallet_id
+      let walletResult = await this.postgresService.query(
+        'SELECT id FROM wallet_accounts WHERE user_id = $1',
+        [userId]
+      );
+
+      let walletId: string;
+      if (walletResult.rows.length === 0) {
+        walletId = uuidv4();
+        await this.postgresService.query(
+          `INSERT INTO wallet_accounts (id, user_id, balance_cents, currency, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, NOW(), NOW())`,
+          [walletId, userId, 0, 'ETB']
+        );
+      } else {
+        walletId = walletResult.rows[0].id;
+      }
+
+      // Calculate current balance (sum of all deposits)
+      const currentBalanceResult = await this.postgresService.query(
+        `SELECT 
+          COALESCE(SUM(
+            CASE 
+              WHEN type = 'deposit' THEN amount_cents
+              WHEN type = 'withdrawal' THEN -amount_cents
+              WHEN type IN ('trip_payout', 'trip_earnings', 'bonus', 'refund', 'adjustment') THEN amount_cents
+              WHEN type = 'trip_payment' THEN -amount_cents
+              ELSE 0
+            END
+          ), 0) as current_balance_cents
+         FROM wallet_transactions
+         WHERE wallet_id = $1`,
+        [walletId]
+      );
+
+      const currentBalanceCents = parseInt(
+        currentBalanceResult.rows[0]?.current_balance_cents || '0',
+        10
+      );
+
+      const depositAmountCents = Math.round(depositData.amount * 100);
+      const newBalanceCents = currentBalanceCents + depositAmountCents;
 
       // Generate unique transaction reference
       const chapaTransactionRef = this.chapaService.generateTransactionRef('ARADA_DEP');
 
-      // Create transaction record
+      // Create transaction record with updated balance_after
       const transactionId = uuidv4();
 
       await this.postgresService.query(
@@ -283,10 +263,10 @@ export class WalletService {
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
         [
           transactionId,
-          wallet.wallet_id,
+          walletId,
           'deposit',
-          Math.round(depositData.amount * 100),
-          wallet.balance_cents, // Balance unchanged until payment confirmed
+          depositAmountCents,
+          newBalanceCents, // New balance after this deposit
           `Deposit via ${depositData.payment_method}`,
           chapaTransactionRef,
           'pending',
@@ -434,15 +414,35 @@ export class WalletService {
         }
 
         if (status === 'success') {
-          // Update wallet balance
-          const newBalance = transaction.current_balance + transaction.amount_cents;
+          // Recalculate balance by summing ALL transactions (deposits, withdrawals, etc.)
+          const balanceResult = await client.query(
+            `SELECT 
+              COALESCE(SUM(
+                CASE 
+                  WHEN type = 'deposit' THEN amount_cents
+                  WHEN type = 'withdrawal' THEN -amount_cents
+                  WHEN type IN ('trip_payout', 'trip_earnings', 'bonus', 'refund', 'adjustment') THEN amount_cents
+                  WHEN type = 'trip_payment' THEN -amount_cents
+                  ELSE 0
+                END
+              ), 0) as calculated_balance_cents
+             FROM wallet_transactions
+             WHERE wallet_id = $1`,
+            [transaction.wallet_id]
+          );
 
+          const newBalance = parseInt(
+            balanceResult.rows[0]?.calculated_balance_cents || '0',
+            10
+          );
+
+          // Update wallet_accounts balance
           await client.query(
             'UPDATE wallet_accounts SET balance_cents = $1, updated_at = NOW() WHERE id = $2',
             [newBalance, transaction.wallet_id]
           );
 
-          // Update transaction
+          // Update transaction status and balance_after
           await client.query(
             `UPDATE wallet_transactions 
              SET chapa_status = $1, balance_after_cents = $2, processed_at = NOW(), updated_at = NOW()
