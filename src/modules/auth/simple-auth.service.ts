@@ -16,6 +16,9 @@ export interface AuthResult {
         status: string;
         isPhoneVerified: boolean;
         isEmailVerified: boolean;
+        account_status?: string | null;
+        deactivation_reason?: string | null;
+        flag_id?: string | null;
     };
     redirectTo: string;
 }
@@ -67,6 +70,7 @@ export class SimpleAuthService {
             }
 
             // Check if user account is deactivated - fetch full user data with account_status
+            // ALWAYS check this, even if user object might have some fields
             const userWithStatus = await this.postgresService.query(
                 `SELECT account_status, deactivation_reason, is_active FROM users WHERE id = $1`,
                 [user.id]
@@ -77,17 +81,24 @@ export class SimpleAuthService {
                 const deactivationReason = userWithStatus.rows[0].deactivation_reason;
                 const isActive = userWithStatus.rows[0].is_active;
                 
-                // Update user object with account_status and deactivation_reason
-                (user as any).account_status = accountStatus;
-                (user as any).deactivation_reason = deactivationReason;
+                this.logger.log(`🔍 Checking account status for user ${user.id}: account_status=${accountStatus}, is_active=${isActive}, deactivation_reason=${deactivationReason}`);
                 
-                // If account is deactivated, redirect to deactivated screen instead of throwing error
-                if (accountStatus === 'deactivated' || !isActive) {
-                    this.logger.warn(`❌ Login attempt for deactivated account: ${user.id}`);
+                // Update user object with account_status and deactivation_reason
+                (user as any).account_status = accountStatus || null;
+                (user as any).deactivation_reason = deactivationReason || null;
+                
+                // If account is deactivated OR inactive, redirect to deactivated screen
+                // Check both account_status === 'deactivated' and is_active === false
+                const isDeactivated = accountStatus === 'deactivated' || !isActive;
+                
+                if (isDeactivated) {
+                    this.logger.warn(`❌ Login attempt for deactivated/inactive account: ${user.id}, account_status=${accountStatus}, is_active=${isActive}`);
                     // Don't throw error - instead return user with redirectTo set to account-deactivated
                     // This allows the frontend to show the deactivated screen
                     return await this.generateAuthResult(user, 'account-deactivated');
                 }
+            } else {
+                this.logger.warn(`⚠️ Could not fetch account status for user ${user.id}`);
             }
 
             // Update last login
@@ -137,6 +148,7 @@ export class SimpleAuthService {
             }
 
             // Check if user account is deactivated - fetch full user data with account_status
+            // ALWAYS check this, even if user object might have some fields
             const userWithStatus = await this.postgresService.query(
                 `SELECT account_status, deactivation_reason, is_active FROM users WHERE id = $1`,
                 [user.id]
@@ -147,17 +159,24 @@ export class SimpleAuthService {
                 const deactivationReason = userWithStatus.rows[0].deactivation_reason;
                 const isActive = userWithStatus.rows[0].is_active;
                 
-                // Update user object with account_status and deactivation_reason
-                (user as any).account_status = accountStatus;
-                (user as any).deactivation_reason = deactivationReason;
+                this.logger.log(`🔍 Checking account status for user ${user.id}: account_status=${accountStatus}, is_active=${isActive}, deactivation_reason=${deactivationReason}`);
                 
-                // If account is deactivated, redirect to deactivated screen instead of throwing error
-                if (accountStatus === 'deactivated' || !isActive) {
-                    this.logger.warn(`❌ Login attempt for deactivated account: ${user.id}`);
+                // Update user object with account_status and deactivation_reason
+                (user as any).account_status = accountStatus || null;
+                (user as any).deactivation_reason = deactivationReason || null;
+                
+                // If account is deactivated OR inactive, redirect to deactivated screen
+                // Check both account_status === 'deactivated' and is_active === false
+                const isDeactivated = accountStatus === 'deactivated' || !isActive;
+                
+                if (isDeactivated) {
+                    this.logger.warn(`❌ Login attempt for deactivated/inactive account: ${user.id}, account_status=${accountStatus}, is_active=${isActive}`);
                     // Don't throw error - instead return user with redirectTo set to account-deactivated
                     // This allows the frontend to show the deactivated screen
                     return await this.generateAuthResult(user, 'account-deactivated');
                 }
+            } else {
+                this.logger.warn(`⚠️ Could not fetch account status for user ${user.id}`);
             }
 
             // Update last login
