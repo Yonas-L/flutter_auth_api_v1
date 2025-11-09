@@ -1,4 +1,5 @@
-import { Injectable, BadRequestException, NotFoundException, Logger, ModuleRef } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { PostgresService } from '../database/postgres.service';
 import { DepositRequestDto, WithdrawalRequestDto, TransactionQueryDto } from './dto/wallet.dto';
 import { ChapaService, ChapaPaymentRequest } from './chapa.service';
