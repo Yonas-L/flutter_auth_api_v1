@@ -275,7 +275,7 @@ export class AuthPostgresService {
     /**
      * Refresh access token using refresh token
      */
-    async refreshToken(refreshToken: string): Promise<{ accessToken: string }> {
+    async refreshToken(refreshToken: string): Promise<{ accessToken: string; account_status?: string | null }> {
         try {
             this.logger.log(`🔄 Refreshing token`);
 
@@ -290,8 +290,15 @@ export class AuthPostgresService {
                 throw new UnauthorizedException('User not found');
             }
 
-            // Check if user is still active
-            if (!user.is_active) {
+            // Get account_status from database
+            const accountStatusQuery = await this.postgresService.query(
+                `SELECT account_status FROM users WHERE id = $1`,
+                [user.id]
+            );
+            const accountStatus = accountStatusQuery.rows[0]?.account_status || null;
+
+            // Check if user is still active (but allow refresh even if deactivated to check status)
+            if (!user.is_active && accountStatus !== 'deactivated') {
                 throw new UnauthorizedException('User account is deactivated');
             }
 
@@ -304,10 +311,18 @@ export class AuthPostgresService {
                 }
             );
 
-            this.logger.log(`✅ Token refreshed for user: ${user.id}`);
-            return { accessToken };
+            this.logger.log(`✅ Token refreshed for user: ${user.id}, account_status: ${accountStatus}`);
+            
+            // Return accessToken and account_status so client can check if account is reactivated
+            return { 
+                accessToken,
+                account_status: accountStatus
+            };
         } catch (error) {
             this.logger.error(`❌ Error refreshing token:`, error);
+            if (error instanceof UnauthorizedException) {
+                throw error;
+            }
             throw new UnauthorizedException('Invalid refresh token');
         }
     }
