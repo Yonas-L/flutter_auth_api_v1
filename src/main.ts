@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { IoAdapter } from '@nestjs/platform-socket.io';
+import { RedisIoAdapter } from './redis-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -12,8 +13,17 @@ async function bootstrap() {
     credentials: true,
   });
 
-  // Enable Socket.IO
-  app.useWebSocketAdapter(new IoAdapter(app));
+  // Enable Socket.IO with Redis adapter for cross-service sync
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    console.warn('⚠️  REDIS_URL is not set. Socket.IO will run without shared adapter.');
+    app.useWebSocketAdapter(new IoAdapter(app));
+  } else {
+    const redisAdapter = new RedisIoAdapter(app, redisUrl);
+    await redisAdapter.connectToRedis();
+    app.useWebSocketAdapter(redisAdapter);
+    console.log('✅ Socket.IO Redis adapter initialized');
+  }
 
   const port = process.env.PORT || 8080;
   await app.listen(port, '0.0.0.0');
