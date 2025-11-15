@@ -12,7 +12,7 @@ async function testPostgresConnection() {
     console.log('🚀 Testing PostgreSQL connection...\n');
 
     // Get database URL from environment
-    const databaseUrl = process.env.DATABASE_URL || 'postgresql://db_admin:7snpqJqfviJZ9bSo6ZXkvdQi9OXsqb9f@dpg-d2v8n0re5dus73fe8170-a.oregon-postgres.render.com/arada_main';
+    const databaseUrl = process.env.DATABASE_URL || 'postgresql://db_admin:pOpcQpvbt40h8T9IgU22CExHgoaxdqcA@dpg-d48d0jje5dus73c57ca0-a.oregon-postgres.render.com/arada_main_zvk2_a2eb';
 
     if (!databaseUrl) {
         console.error('❌ DATABASE_URL not found in environment variables');

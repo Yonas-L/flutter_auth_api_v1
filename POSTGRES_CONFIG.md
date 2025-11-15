@@ -6,7 +6,7 @@ Add these environment variables to your `.env` file or Render environment:
 
 ```bash
 # PostgreSQL Database Configuration
-DATABASE_URL=postgresql://db_admin:7snpqJqfviJZ9bSo6ZXkvdQi9OXsqb9f@dpg-d2v8n0re5dus73fe8170-a.oregon-postgres.render.com/arada_main
+DATABASE_URL=postgresql://db_admin:pOpcQpvbt40h8T9IgU22CExHgoaxdqcA@dpg-d48d0jje5dus73c57ca0-a.oregon-postgres.render.com/arada_main_zvk2_a2eb
 
 # JWT Configuration
 JWT_ACCESS_SECRET=your_jwt_access_secret_here
@@ -43,7 +43,7 @@ Update your Render backend service with these environment variables:
 3. Go to Environment tab
 4. Add/Update the following variables:
 
-- `DATABASE_URL`: `postgresql://db_admin:7snpqJqfviJZ9bSo6ZXkvdQi9OXsqb9f@dpg-d2v8n0re5dus73fe8170-a.oregon-postgres.render.com/arada_main`
+- `DATABASE_URL`: `postgresql://db_admin:pOpcQpvbt40h8T9IgU22CExHgoaxdqcA@dpg-d48d0jje5dus73c57ca0-a.oregon-postgres.render.com/arada_main_zvk2_a2eb`
 - `JWT_ACCESS_SECRET`: Your JWT access secret
 - `JWT_REFRESH_SECRET`: Your JWT refresh secret
 - `ACCESS_EXPIRES_IN`: `15m`

@@ -18,10 +18,10 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Database credentials
-DB_HOST="dpg-d3l0bqpr0fns73euptg0-a.oregon-postgres.render.com"
+DB_HOST="dpg-d48d0jje5dus73c57ca0-a.oregon-postgres.render.com"
 DB_USER="db_admin"
-DB_NAME="arada_main_zvk2"
-DB_PASSWORD="LQ6LCUW22LaJ2td8Dz6rvcqoYL50h8qn"
+DB_NAME="arada_main_zvk2_a2eb"
+DB_PASSWORD="pOpcQpvbt40h8T9IgU22CExHgoaxdqcA"
 
 # Connection string
 DB_URL="postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}/${DB_NAME}?sslmode=require"

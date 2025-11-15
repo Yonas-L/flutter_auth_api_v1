@@ -10,12 +10,12 @@ const { Pool } = require('pg');
 async function testConnection() {
     console.log('🔍 Testing PostgreSQL connection with detailed diagnostics...\n');
 
-    const databaseUrl = 'postgresql://db_admin:7snpqJqfviJZ9bSo6ZXkvdQi9OXsqb9f@dpg-d2v8n0re5dus73fe8170-a.oregon-postgres.render.com/arada_main';
+    const databaseUrl = 'postgresql://db_admin:pOpcQpvbt40h8T9IgU22CExHgoaxdqcA@dpg-d48d0jje5dus73c57ca0-a.oregon-postgres.render.com/arada_main_zvk2_a2eb';
 
     console.log('📊 Connection Details:');
-    console.log(`   Host: dpg-d2v8n0re5dus73fe8170-a.oregon-postgres.render.com`);
+    console.log(`   Host: dpg-d48d0jje5dus73c57ca0-a.oregon-postgres.render.com`);
     console.log(`   Port: 5432`);
-    console.log(`   Database: arada_main`);
+    console.log(`   Database: arada_main_zvk2_a2eb`);
     console.log(`   Username: db_admin`);
     console.log('');
 

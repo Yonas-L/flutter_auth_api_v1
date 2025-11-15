@@ -10,10 +10,10 @@ const fs = require('fs');
 const path = require('path');
 
 // Database credentials
-const DB_HOST = 'dpg-d3l0bqpr0fns73euptg0-a.oregon-postgres.render.com';
+const DB_HOST = 'dpg-d48d0jje5dus73c57ca0-a.oregon-postgres.render.com';
 const DB_USER = 'db_admin';
-const DB_NAME = 'arada_main_zvk2';
-const DB_PASSWORD = 'LQ6LCUW22LaJ2td8Dz6rvcqoYL50h8qn';
+const DB_NAME = 'arada_main_zvk2_a2eb';
+const DB_PASSWORD = 'pOpcQpvbt40h8T9IgU22CExHgoaxdqcA';
 
 const DB_URL = `postgresql://${DB_USER}:${DB_PASSWORD}@${DB_HOST}/${DB_NAME}?sslmode=require`;
 
