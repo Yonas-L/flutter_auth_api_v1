@@ -251,8 +251,8 @@ export class TripsService {
             const trip = tripResult.rows[0];
             this.logger.log(`Trip created successfully: ${trip.id}`);
 
-            // Sync trip status with driver profile
-            await this.tripStatusSyncService.syncTripStatus(trip.id, 'in_progress', driverProfile.id);
+            // Sync trip status with driver profile using the current transaction
+            await this.tripStatusSyncService.syncTripStatus(trip.id, 'in_progress', driverProfile.id, client);
 
             // Create driver pickup record
             this.logger.log('Creating driver pickup record...');
@@ -298,14 +298,6 @@ export class TripsService {
             const pickupResult = await client.query(pickupQuery, pickupValues);
             const driverPickup = pickupResult.rows[0];
             this.logger.log(`Driver pickup created: ${driverPickup.id}`);
-
-            // Update driver profile to set current trip
-            this.logger.log('Updating driver profile...');
-            await this.driverProfilesRepository.update(driverProfile.id, {
-                current_trip_id: trip.id,
-                is_available: false
-            });
-            this.logger.log('Driver profile updated successfully');
 
             await client.query('COMMIT');
 

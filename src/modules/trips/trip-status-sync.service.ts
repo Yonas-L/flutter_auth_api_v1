@@ -1,4 +1,5 @@
 import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
+import { PoolClient } from 'pg';
 import { PostgresService } from '../database/postgres.service';
 import { DriverProfilesPostgresRepository } from '../database/repositories/driver-profiles-postgres.repository';
 import { SocketGateway } from '../socket/socket.gateway';
@@ -17,14 +18,16 @@ export class TripStatusSyncService {
     /**
      * Sync trip status changes with driver profile current_trip_id
      */
-    async syncTripStatus(tripId: string, newStatus: string, driverId?: string): Promise<void> {
+    async syncTripStatus(tripId: string, newStatus: string, driverId?: string, client?: PoolClient): Promise<void> {
         try {
             this.logger.log(`🔄 Syncing trip status for trip ${tripId} to ${newStatus}`);
 
             // If driverId is not provided, get it from the trip
             if (!driverId) {
                 const tripQuery = 'SELECT driver_id FROM trips WHERE id = $1';
-                const tripResult = await this.postgresService.query(tripQuery, [tripId]);
+                const tripResult = client ? 
+                    await client.query(tripQuery, [tripId]) :
+                    await this.postgresService.query(tripQuery, [tripId]);
 
                 if (tripResult.rows.length === 0) {
                     this.logger.warn(`Trip ${tripId} not found`);
@@ -40,11 +43,15 @@ export class TripStatusSyncService {
             }
 
             // Get driver profile by driver_id
-            const driverProfile = await this.driverProfilesRepository.findById(driverId);
-            if (!driverProfile) {
+            const driverProfileQuery = 'SELECT * FROM driver_profiles WHERE id = $1';
+            const driverProfileResult = client
+                ? await client.query(driverProfileQuery, [driverId])
+                : await this.postgresService.query(driverProfileQuery, [driverId]);
+            if (driverProfileResult.rows.length === 0) {
                 this.logger.warn(`Driver profile not found for driver ${driverId}`);
                 return;
             }
+            const driverProfile = driverProfileResult.rows[0];
 
             // Update current_trip_id based on trip status
             let shouldUpdate = false;
@@ -98,10 +105,19 @@ export class TripStatusSyncService {
                         break;
                 }
 
-                await this.driverProfilesRepository.update(driverId, {
-                    current_trip_id: newCurrentTripId,
-                    is_available: isAvailable,
-                });
+                if (client) {
+                    const updateQuery = `
+                        UPDATE driver_profiles 
+                        SET current_trip_id = $1, is_available = $2, updated_at = NOW()
+                        WHERE id = $3
+                    `;
+                    await client.query(updateQuery, [newCurrentTripId, isAvailable, driverId]);
+                } else {
+                    await this.driverProfilesRepository.update(driverId, {
+                        current_trip_id: newCurrentTripId,
+                        is_available: isAvailable,
+                    });
+                }
                 this.logger.log(`✅ Updated driver profile for driver ${driverId}: available=${isAvailable}, trip_status=${newStatus}`);
 
                 // Send socket notification to update driver status in real-time
