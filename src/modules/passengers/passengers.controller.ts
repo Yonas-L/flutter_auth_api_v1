@@ -144,10 +144,10 @@ export class PassengersController {
     }
 
     /**
-     * Get active ads
-     * GET /api/ads
+     * Get active ads for passengers
+     * GET /api/passenger/ads
      */
-    @Get('ads')
+    @Get('passenger/ads')
     async getAds() {
         try {
             const query = 'SELECT id, title, image_url, target_url FROM ads WHERE is_active = true ORDER BY sort_order ASC';
