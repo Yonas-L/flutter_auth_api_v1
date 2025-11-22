@@ -118,7 +118,7 @@ export class PassengersService {
                 // Generate JWT
                 const token = this.jwtService.sign(
                     {
-                        userId: user.id,
+                        sub: user.id,
                         phoneNumber: normalizedPhone,
                         userType: user.user_type,
                     },
