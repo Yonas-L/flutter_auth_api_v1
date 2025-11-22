@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Headers, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Headers, Query, BadRequestException, Logger } from '@nestjs/common';
 import { Public } from '../auth/public.decorator';
 import * as crypto from 'crypto';
 import { WalletService } from './wallet.service';
@@ -13,6 +13,42 @@ export class WalletWebhookController {
     @Public()
     ping() {
         return { ok: true, message: 'Webhook endpoint reachable' };
+    }
+
+    @Get('payment-return')
+    @Public()
+    paymentReturn(@Query() query: any) {
+        const deepLink = 'aradatransport://wallet/payment-complete';
+
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Payment Complete</title>
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f5f5f5; text-align: center; padding: 20px; }
+                    .container { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; width: 100%; }
+                    h1 { color: #10b981; margin-bottom: 16px; }
+                    p { color: #6b7280; margin-bottom: 24px; line-height: 1.5; }
+                    .button { background-color: #000; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block; transition: opacity 0.2s; }
+                    .button:hover { opacity: 0.9; }
+                </style>
+            </head>
+            <body>
+                <div class="container">
+                    <h1>Payment Successful!</h1>
+                    <p>Your deposit has been processed. Redirecting you back to the app...</p>
+                    <a href="${deepLink}" class="button">Open App</a>
+                </div>
+                <script>
+                    setTimeout(function() {
+                        window.location.href = "${deepLink}";
+                    }, 1000);
+                </script>
+            </body>
+            </html>
+        `;
     }
 
     @Post('webhook')
