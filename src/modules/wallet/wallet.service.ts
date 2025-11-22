@@ -467,7 +467,7 @@ export class WalletService {
           // Update transaction status and balance_after
           await client.query(
             `UPDATE wallet_transactions 
-             SET chapa_status = $1, balance_after_cents = $2, processed_at = NOW(), updated_at = NOW()
+             SET chapa_status = $1, balance_after_cents = $2, processed_at = NOW()
              WHERE id = $3`,
             ['success', newBalance, transaction.id]
           );
