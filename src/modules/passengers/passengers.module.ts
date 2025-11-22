@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { PassengersController } from './passengers.controller';
 import { PassengersService } from './passengers.service';
 import { DatabaseModule } from '../database/database.module';
@@ -11,9 +12,12 @@ import { AuthModule } from '../auth/auth.module';
         DatabaseModule,
         OtpModule,
         AuthModule,
-        JwtModule.register({
-            secret: process.env.JWT_SECRET || 'your-secret-key',
-            signOptions: { expiresIn: '30d' },
+        JwtModule.registerAsync({
+            inject: [ConfigService],
+            useFactory: (configService: ConfigService) => ({
+                secret: configService.get('JWT_SECRET') || configService.get('JWT_ACCESS_SECRET'),
+                signOptions: { expiresIn: '30d' },
+            }),
         }),
     ],
     controllers: [PassengersController],

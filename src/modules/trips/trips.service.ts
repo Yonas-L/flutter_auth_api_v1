@@ -830,7 +830,7 @@ export class TripsService {
                         const matchingDrivers = await this.findNearbyDrivers(
                             trip.pickup_latitude,
                             trip.pickup_longitude,
-                            2, // 2km radius
+                            10, // 10km radius
                             vehicleTypeId
                         );
 
@@ -861,11 +861,11 @@ export class TripsService {
                             }
                             broadcastState.isPollingForVehicleType = false;
 
-                            // Find all drivers within 2km (any vehicle type)
+                            // Find all drivers within 10km (any vehicle type)
                             const allTypeDrivers = await this.findNearbyDrivers(
                                 trip.pickup_latitude,
                                 trip.pickup_longitude,
-                                2, // 2km radius
+                                10, // 10km radius
                                 undefined // No vehicle type filter
                             );
 
@@ -902,13 +902,13 @@ export class TripsService {
                             return;
                         }
 
-                        this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 2km`);
+                        this.logger.log(`⏱️ 1 minute elapsed - expanding trip ${trip.id} to all vehicle types within 10km`);
 
-                        // Find all drivers within 2km (any vehicle type)
+                        // Find all drivers within 10km (any vehicle type)
                         const allTypeDrivers = await this.findNearbyDrivers(
                             trip.pickup_latitude,
                             trip.pickup_longitude,
-                            2, // 2km radius
+                            10, // 10km radius
                             undefined // No vehicle type filter
                         );
 

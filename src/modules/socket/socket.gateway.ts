@@ -96,14 +96,16 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             // Verify custom JWT token using our PostgreSQL validation
             let payload;
             try {
+                this.logger.log(`Verifying token for ${client.id}...`);
                 payload = this.jwtService.verify(token);
+                this.logger.log(`Token verified for ${client.id}. Payload sub: ${payload.sub}`);
             } catch (error) {
                 this.logger.warn(`Connection rejected: Invalid JWT token for ${client.id}: ${error.message}`);
                 client.disconnect();
                 return;
             }
 
-            const userId = payload.sub;
+            const userId = payload.sub || payload.userId;
             if (!userId) {
                 this.logger.warn(`Connection rejected: No user ID in token for ${client.id}`);
                 client.disconnect();
@@ -143,6 +145,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
             // Determine user type from database
             const userType = user.user_type;
+            this.logger.log(`User found: ${userId}, Type: ${userType}, Active: ${user.is_active}`);
 
             if (userType === 'driver') {
                 // Handle driver connection
@@ -1003,9 +1006,9 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 INSERT INTO trips (
                     passenger_id, pickup_address, pickup_latitude, pickup_longitude, 
                     dropoff_address, dropoff_latitude, dropoff_longitude, 
-                    selected_vehicle_details, status, request_timestamp
+                    selected_vehicle_details, vehicle_type_id, status, request_timestamp
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'requested', NOW())
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'requested', NOW())
                 RETURNING *;
             `;
             const values = [
@@ -1016,7 +1019,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 tripDetails.dropoff.address,
                 tripDetails.dropoff.latitude,
                 tripDetails.dropoff.longitude,
-                selectedVehicle
+                selectedVehicle,
+                selectedVehicle?.id || null
             ];
 
             const { rows } = await this.postgresService.query(insertTripQuery, values);
