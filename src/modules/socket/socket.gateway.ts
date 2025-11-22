@@ -155,10 +155,18 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 // Join driver room
                 await client.join(`driver:${userId}`);
 
-                // Register socket id only; do NOT change online state on mere connection
+                // Register socket id only
                 await this.updateDriverStatus(userId, {
                     socket_id: client.id
                 });
+
+                // Restore availability state from DB
+                const driverProfile = await this.driverProfilesRepository.findByUserId(userId);
+                if (driverProfile && driverProfile.is_available) {
+                    this.availableDrivers.set(userId, client as AuthenticatedSocket);
+                    await client.join('available_drivers');
+                    this.logger.log(`Restored driver ${userId} to available drivers based on persistent status`);
+                }
 
                 this.logger.log(`Driver ${userId} connected with socket ${client.id}`);
 
@@ -220,10 +228,9 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 // Remove from available drivers
                 this.availableDrivers.delete(authClient.userId);
 
-                // Update database - set offline
+                // Update database - set socket_id null but PRESERVE online/available status
+                // This ensures session persistence when app is backgrounded
                 await this.updateDriverStatus(authClient.userId, {
-                    is_online: false,
-                    is_available: false,
                     socket_id: null
                 });
 
