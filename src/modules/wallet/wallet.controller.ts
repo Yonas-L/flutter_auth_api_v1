@@ -54,66 +54,7 @@ export class WalletController {
     return this.walletService.getUserWithdrawalRequests(req.user.id);
   }
 
-  // Webhook endpoint for Chapa payment callbacks (public endpoint)
-  @UseGuards()
-  @Post('deposit/callback')
-  async handlePaymentCallback(@Body() callbackData: any, @Headers() headers: any) {
-    console.log('Payment callback received:', {
-      tx_ref: callbackData.tx_ref,
-      status: callbackData.status,
-      event: callbackData.event,
-      headers: headers
-    });
 
-    // Chapa webhook sends different data structure
-    const chapaTxRef = callbackData.tx_ref || callbackData.chapa_tx_ref;
-    const status = callbackData.status === 'success' || callbackData.event === 'charge.success' ? 'success' : 'failed';
-
-    if (!chapaTxRef) {
-      throw new BadRequestException('Missing transaction reference');
-    }
-
-    return this.walletService.handlePaymentCallback(chapaTxRef, status);
-  }
-
-  // Verified webhook endpoint (no auth guard on Chapa webhooks)
-  @UseGuards()
-  @Post('webhook')
-  async handleWebhook(
-    @Body() payload: any,
-    @Headers('chapa-signature') chapaSignatureA: string,
-    @Headers('x-chapa-signature') chapaSignatureB: string,
-  ) {
-    const secretKey = process.env.CHAPA_SECRET_KEY || '';
-    const webhookSecret = process.env.CHAPA_WEBHOOK_SECRET || '';
-    if (!secretKey) {
-      throw new BadRequestException('Chapa secret key not configured');
-    }
-
-    const payloadString = JSON.stringify(payload);
-    const expectedSigB = crypto
-      .createHmac('sha256', secretKey)
-      .update(payloadString)
-      .digest('hex');
-    const expectedSigA = webhookSecret
-      ? crypto.createHmac('sha256', webhookSecret).update(webhookSecret).digest('hex')
-      : '';
-
-    const sigBValid = !!chapaSignatureB && chapaSignatureB === expectedSigB;
-    const sigAValid = !!webhookSecret && !!chapaSignatureA && chapaSignatureA === expectedSigA;
-    if (!sigAValid && !sigBValid) {
-      throw new BadRequestException('Invalid webhook signature');
-    }
-
-    const txRef = payload.tx_ref || payload.trx_ref || payload.reference || payload.chapa_tx_ref;
-    const status = payload.status === 'success' || payload.event === 'charge.success' ? 'success' : 'failed';
-    if (!txRef) {
-      throw new BadRequestException('Missing tx_ref in webhook payload');
-    }
-
-    const result = await this.walletService.handlePaymentCallback(txRef, status);
-    return { ok: true, result };
-  }
 
   @Get('debug')
   async debugWallet(@Request() req) {
