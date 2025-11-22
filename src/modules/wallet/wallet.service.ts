@@ -57,14 +57,14 @@ export class WalletService {
 
       const wallet = walletResult.rows[0];
 
-      // Calculate balance by simply summing ALL amount_cents from deposit transactions
-      // No status filtering - sum all deposits regardless of chapa_status
+      // Calculate balance by summing only SUCCESSFUL deposits
+      // Pending deposits should NOT be included in balance until payment is confirmed
       const balanceResult = await this.postgresService.query(
         `SELECT 
           COALESCE(SUM(
             CASE 
-              -- Deposits: Sum ALL deposits regardless of status
-              WHEN type = 'deposit' THEN amount_cents
+              -- Deposits: Only sum successful deposits (chapa_status = 'success' or NULL for old records)
+              WHEN type = 'deposit' AND (chapa_status = 'success' OR chapa_status IS NULL) THEN amount_cents
               -- Withdrawals: Subtract all withdrawals
               WHEN type = 'withdrawal' THEN -amount_cents
               -- Credits: trip payouts, earnings, bonuses, refunds, adjustments
@@ -224,12 +224,12 @@ export class WalletService {
         walletId = walletResult.rows[0].id;
       }
 
-      // Calculate current balance (sum of all deposits)
+      // Calculate current balance (sum of successful deposits only)
       const currentBalanceResult = await this.postgresService.query(
         `SELECT 
           COALESCE(SUM(
             CASE 
-              WHEN type = 'deposit' THEN amount_cents
+              WHEN type = 'deposit' AND (chapa_status = 'success' OR chapa_status IS NULL) THEN amount_cents
               WHEN type = 'withdrawal' THEN -amount_cents
               WHEN type IN ('trip_payout', 'trip_earnings', 'bonus', 'refund', 'adjustment') THEN amount_cents
               WHEN type = 'trip_payment' THEN -amount_cents
@@ -284,7 +284,7 @@ export class WalletService {
         phone_number: this.formatPhoneNumberForChapa(user.phone_number || '0912345678'),
         tx_ref: chapaTransactionRef,
         callback_url: `${process.env.BASE_API_URL || 'https://flutter-auth-api-v1.onrender.com'}/api/wallet/deposit/callback`,
-        return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/wallet?status=success`,
+        return_url: `aradatransport://wallet/payment-complete`,
         customization: {
           title: 'Arada Deposit',
           description: `Deposit ${depositData.amount} ETB`,
@@ -436,12 +436,12 @@ export class WalletService {
         }
 
         if (status === 'success') {
-          // Recalculate balance by summing ALL transactions (deposits, withdrawals, etc.)
+          // Recalculate balance by summing only SUCCESSFUL deposits and other transactions
           const balanceResult = await client.query(
             `SELECT 
               COALESCE(SUM(
                 CASE 
-                  WHEN type = 'deposit' THEN amount_cents
+                  WHEN type = 'deposit' AND (chapa_status = 'success' OR chapa_status IS NULL) THEN amount_cents
                   WHEN type = 'withdrawal' THEN -amount_cents
                   WHEN type IN ('trip_payout', 'trip_earnings', 'bonus', 'refund', 'adjustment') THEN amount_cents
                   WHEN type = 'trip_payment' THEN -amount_cents

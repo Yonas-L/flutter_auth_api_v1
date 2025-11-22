@@ -1,19 +1,22 @@
-import { Controller, Post, Get, Body, Headers, BadRequestException, SetMetadata } from '@nestjs/common';
+import { Controller, Post, Get, Body, Headers, BadRequestException, Logger } from '@nestjs/common';
+import { Public } from '../auth/public.decorator';
 import * as crypto from 'crypto';
 import { WalletService } from './wallet.service';
 
 @Controller('api/wallet')
 export class WalletWebhookController {
+    private readonly logger = new Logger(WalletWebhookController.name);
+
     constructor(private readonly walletService: WalletService) { }
 
     @Get('webhook/test')
-    @SetMetadata('isPublic', true)
+    @Public()
     ping() {
         return { ok: true, message: 'Webhook endpoint reachable' };
     }
 
     @Post('webhook')
-    @SetMetadata('isPublic', true)
+    @Public()
     async handleWebhook(
         @Body() payload: any,
         @Headers('chapa-signature') chapaSignature: string,
@@ -22,13 +25,15 @@ export class WalletWebhookController {
         // Webhook secret hash configured in Chapa dashboard
         const webhookSecret = process.env.CHAPA_SECRET_KEY || '';
         if (!webhookSecret) {
+            this.logger.error('Chapa secret key not configured');
             throw new BadRequestException('Chapa secret key not configured');
         }
 
-        console.log('Webhook received:', {
+        this.logger.log('Webhook received:', {
             event: payload.event,
             tx_ref: payload.tx_ref,
             status: payload.status,
+            amount: payload.amount,
             chapaSignature,
             xChapaSignature
         });
@@ -40,7 +45,7 @@ export class WalletWebhookController {
             .createHmac('sha256', webhookSecret)
             .update(payloadString)
             .digest('hex');
-        
+
         // chapa-signature: HMAC SHA256(secret, secret)
         const expectedChapaSignature = crypto
             .createHmac('sha256', webhookSecret)
@@ -50,8 +55,8 @@ export class WalletWebhookController {
         // Verify either signature is valid (Chapa sends both)
         const xChapaValid = !!xChapaSignature && xChapaSignature === expectedXChapaSignature;
         const chapaValid = !!chapaSignature && chapaSignature === expectedChapaSignature;
-        
-        console.log('Signature validation:', {
+
+        this.logger.log('Signature validation:', {
             xChapaValid,
             chapaValid,
             expectedXChapaSignature,
@@ -61,17 +66,21 @@ export class WalletWebhookController {
         });
 
         if (!xChapaValid && !chapaValid) {
-            console.error('Invalid webhook signature');
+            this.logger.error('Invalid webhook signature - rejecting webhook');
             throw new BadRequestException('Invalid webhook signature');
         }
 
         const txRef = payload.tx_ref || payload.trx_ref || payload.reference || payload.chapa_tx_ref;
         const status = payload.status === 'success' || payload.event === 'charge.success' ? 'success' : 'failed';
         if (!txRef) {
+            this.logger.error('Missing tx_ref in webhook payload');
             throw new BadRequestException('Missing tx_ref in webhook payload');
         }
 
+        this.logger.log(`Processing payment callback for tx_ref: ${txRef}, status: ${status}`);
         const result = await this.walletService.handlePaymentCallback(txRef, status as 'success' | 'failed');
+
+        this.logger.log(`Webhook processed successfully for tx_ref: ${txRef}`);
         return { ok: true, result };
     }
 }
