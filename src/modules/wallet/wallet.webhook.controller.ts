@@ -27,25 +27,28 @@ export class WalletWebhookController {
                 <title>Payment Complete</title>
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f5f5f5; text-align: center; padding: 20px; }
-                    .container { background: white; padding: 40px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px; width: 100%; }
-                    h1 { color: #10b981; margin-bottom: 16px; }
-                    p { color: #6b7280; margin-bottom: 24px; line-height: 1.5; }
-                    .button { background-color: #000; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block; transition: opacity 0.2s; }
-                    .button:hover { opacity: 0.9; }
+                    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); text-align: center; padding: 20px; }
+                    .container { background: white; padding: 48px 40px; border-radius: 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.3); max-width: 400px; width: 100%; }
+                    .checkmark { width: 80px; height: 80px; margin: 0 auto 24px; background: #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+                    .checkmark svg { width: 50px; height: 50px; stroke: white; stroke-width: 3; fill: none; }
+                    h1 { color: #1f2937; margin-bottom: 12px; font-size: 28px; }
+                    p { color: #6b7280; margin-bottom: 32px; line-height: 1.6; font-size: 16px; }
+                    .button { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 16px 32px; border-radius: 12px; text-decoration: none; font-weight: 600; display: inline-block; transition: transform 0.2s, box-shadow 0.2s; font-size: 16px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+                    .button:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6); }
+                    .button:active { transform: translateY(0); }
                 </style>
             </head>
             <body>
                 <div class="container">
+                    <div class="checkmark">
+                        <svg viewBox="0 0 52 52">
+                            <path d="M14 27l7 7 16-16"/>
+                        </svg>
+                    </div>
                     <h1>Payment Successful!</h1>
-                    <p>Your deposit has been processed. Redirecting you back to the app...</p>
-                    <a href="${deepLink}" class="button">Open App</a>
+                    <p>Your wallet has been credited successfully. Click the button below to return to your wallet.</p>
+                    <a href="${deepLink}" class="button">Return to Wallet</a>
                 </div>
-                <script>
-                    setTimeout(function() {
-                        window.location.href = "${deepLink}";
-                    }, 1000);
-                </script>
             </body>
             </html>
         `;
