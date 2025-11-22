@@ -60,7 +60,7 @@ export class PassengersController {
     @Get('user/profile')
     @UseGuards(JwtAuthGuard)
     async getProfile(@Request() req) {
-        return this.passengersService.getProfile(req.user.userId);
+        return this.passengersService.getProfile(req.user.id);
     }
 
     /**
@@ -70,27 +70,27 @@ export class PassengersController {
     @Put('user/profile')
     @UseGuards(JwtAuthGuard)
     async updateProfile(@Request() req, @Body() updateDto: UpdatePassengerProfileDto) {
-        return this.passengersService.updateProfile(req.user.userId, updateDto);
+        return this.passengersService.updateProfile(req.user.id, updateDto);
     }
 
     /**
      * Get trip history
      * GET /api/trips/history
      */
-    @Get('trips/history')
+    @Get('passenger/trips/history')
     @UseGuards(JwtAuthGuard)
     async getTripHistory(@Request() req) {
-        return this.passengersService.getTripHistory(req.user.userId);
+        return this.passengersService.getTripHistory(req.user.id);
     }
 
     /**
      * Rate a trip
      * POST /api/trips/:tripId/rate
      */
-    @Post('trips/:tripId/rate')
+    @Post('passenger/trips/:tripId/rate')
     @UseGuards(JwtAuthGuard)
     async rateTrip(@Request() req, @Param('tripId') tripId: string, @Body() rateDto: RateTripDto) {
-        return this.passengersService.rateTrip(req.user.userId, tripId, rateDto);
+        return this.passengersService.rateTrip(req.user.id, tripId, rateDto);
     }
 
     /**
@@ -100,7 +100,7 @@ export class PassengersController {
     @Get('user/favorite-places')
     @UseGuards(JwtAuthGuard)
     async getFavoritePlaces(@Request() req) {
-        return this.passengersService.getFavoritePlaces(req.user.userId);
+        return this.passengersService.getFavoritePlaces(req.user.id);
     }
 
     /**
@@ -110,7 +110,7 @@ export class PassengersController {
     @Post('user/favorite-places')
     @UseGuards(JwtAuthGuard)
     async createFavoritePlace(@Request() req, @Body() createDto: CreateFavoritePlaceDto) {
-        return this.passengersService.createFavoritePlace(req.user.userId, createDto);
+        return this.passengersService.createFavoritePlace(req.user.id, createDto);
     }
 
     /**
@@ -120,7 +120,7 @@ export class PassengersController {
     @Delete('user/favorite-places/:favoritePlaceId')
     @UseGuards(JwtAuthGuard)
     async deleteFavoritePlace(@Request() req, @Param('favoritePlaceId') favoritePlaceId: string) {
-        return this.passengersService.deleteFavoritePlace(req.user.userId, favoritePlaceId);
+        return this.passengersService.deleteFavoritePlace(req.user.id, favoritePlaceId);
     }
 
     /**
@@ -130,7 +130,7 @@ export class PassengersController {
     @Get('notifications')
     @UseGuards(JwtAuthGuard)
     async getNotifications(@Request() req) {
-        return this.passengersService.getNotifications(req.user.userId);
+        return this.passengersService.getNotifications(req.user.id);
     }
 
     /**
@@ -140,7 +140,7 @@ export class PassengersController {
     @Post('notifications/mark-all-as-read')
     @UseGuards(JwtAuthGuard)
     async markAllNotificationsAsRead(@Request() req) {
-        return this.passengersService.markAllNotificationsAsRead(req.user.userId);
+        return this.passengersService.markAllNotificationsAsRead(req.user.id);
     }
 
     /**

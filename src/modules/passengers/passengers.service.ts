@@ -8,6 +8,7 @@ import { normalizePhoneNumber, validateEthiopianPhoneNumber } from './utils/phon
 import { UpdatePassengerProfileDto } from './dto/update-passenger-profile.dto';
 import { CreateFavoritePlaceDto } from './dto/create-favorite-place.dto';
 import { RateTripDto } from './dto/rate-trip.dto';
+import { TripsService } from '../trips/trips.service';
 
 @Injectable()
 export class PassengersService {
@@ -18,6 +19,7 @@ export class PassengersService {
         private readonly usersRepository: UsersPostgresRepository,
         private readonly otpService: OtpService,
         private readonly jwtService: JwtService,
+        private readonly tripsService: TripsService,
     ) { }
 
     /**
@@ -231,22 +233,25 @@ export class PassengersService {
         try {
             const query = `
                 SELECT 
-                    id, passenger_id, status,
-                    pickup_address, pickup_latitude, pickup_longitude,
-                    dropoff_address, dropoff_latitude, dropoff_longitude,
-                    final_fare_cents, estimated_distance_km, actual_distance_km,
-                    created_at, completed_at, passenger_rating, passenger_comment,
-                    driver_details, selected_vehicle_details
-                FROM trips 
-                WHERE passenger_id = $1
-                ORDER BY created_at DESC
+                    t.id, t.trip_reference, t.status,
+                    t.pickup_address, t.pickup_latitude, t.pickup_longitude,
+                    t.dropoff_address, t.dropoff_latitude, t.dropoff_longitude,
+                    t.estimated_fare_cents, t.final_fare_cents,
+                    t.estimated_distance_km, t.actual_distance_km,
+                    t.request_timestamp, t.completed_at,
+                    t.passenger_rating, t.passenger_comment,
+                    t.driver_details, t.selected_vehicle_details
+                FROM trips t
+                WHERE t.passenger_id = $1
+                ORDER BY t.request_timestamp DESC
+                LIMIT 100
             `;
             const { rows } = await this.postgresService.query(query, [userId]);
             return rows;
         } catch (error) {
             this.logger.error(`Failed to get trip history: ${error.message}`);
             throw new HttpException(
-                'An internal server error occurred.',
+                'Failed to fetch trip history',
                 HttpStatus.INTERNAL_SERVER_ERROR,
             );
         }
@@ -281,10 +286,10 @@ export class PassengersService {
             if (driverProfileId) {
                 const updateDriverRatingQuery = `
                     UPDATE driver_profiles SET
-                        rating_count = (SELECT COUNT(passenger_rating) FROM trips WHERE driver_id = $1),
-                        rating_avg = (SELECT AVG(passenger_rating) FROM trips WHERE driver_id = $1 AND passenger_rating IS NOT NULL)
+        rating_count = (SELECT COUNT(passenger_rating) FROM trips WHERE driver_id = $1),
+        rating_avg = (SELECT AVG(passenger_rating) FROM trips WHERE driver_id = $1 AND passenger_rating IS NOT NULL)
                     WHERE id = $1
-                `;
+            `;
                 await client.query(updateDriverRatingQuery, [driverProfileId]);
             }
 
@@ -293,7 +298,7 @@ export class PassengersService {
             return { message: 'Thank you for your feedback!' };
         } catch (error) {
             await client.query('ROLLBACK');
-            this.logger.error(`Failed to rate trip: ${error.message}`);
+            this.logger.error(`Failed to rate trip: ${error.message} `);
             if (error instanceof HttpException) {
                 throw error;
             }
@@ -315,7 +320,7 @@ export class PassengersService {
             const { rows } = await this.postgresService.query(query, [userId]);
             return rows;
         } catch (error) {
-            this.logger.error(`Failed to get favorite places: ${error.message}`);
+            this.logger.error(`Failed to get favorite places: ${error.message} `);
             throw new HttpException(
                 'An internal server error occurred.',
                 HttpStatus.INTERNAL_SERVER_ERROR,
@@ -339,7 +344,7 @@ export class PassengersService {
             ]);
             return rows[0];
         } catch (error) {
-            this.logger.error(`Failed to create favorite place: ${error.message}`);
+            this.logger.error(`Failed to create favorite place: ${error.message} `);
             throw new HttpException(
                 'An internal server error occurred.',
                 HttpStatus.INTERNAL_SERVER_ERROR,
@@ -364,7 +369,7 @@ export class PassengersService {
 
             return { message: 'Favorite place removed successfully.' };
         } catch (error) {
-            this.logger.error(`Failed to delete favorite place: ${error.message}`);
+            this.logger.error(`Failed to delete favorite place: ${error.message} `);
             if (error instanceof HttpException) {
                 throw error;
             }
@@ -384,7 +389,7 @@ export class PassengersService {
             const { rows } = await this.postgresService.query(query, [userId]);
             return rows;
         } catch (error) {
-            this.logger.error(`Failed to get notifications: ${error.message}`);
+            this.logger.error(`Failed to get notifications: ${error.message} `);
             throw new HttpException(
                 'An internal server error occurred.',
                 HttpStatus.INTERNAL_SERVER_ERROR,
@@ -401,7 +406,7 @@ export class PassengersService {
             await this.postgresService.query(query, [userId]);
             return { message: 'All notifications marked as read.' };
         } catch (error) {
-            this.logger.error(`Failed to mark notifications as read: ${error.message}`);
+            this.logger.error(`Failed to mark notifications as read: ${error.message} `);
             throw new HttpException(
                 'An internal server error occurred.',
                 HttpStatus.INTERNAL_SERVER_ERROR,
