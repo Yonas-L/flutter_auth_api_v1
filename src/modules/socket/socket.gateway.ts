@@ -96,9 +96,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             // Verify custom JWT token using our PostgreSQL validation
             let payload;
             try {
-                this.logger.log(`Verifying token for ${client.id}...`);
                 payload = this.jwtService.verify(token);
-                this.logger.log(`Token verified for ${client.id}. Payload sub: ${payload.sub}`);
             } catch (error) {
                 this.logger.warn(`Connection rejected: Invalid JWT token for ${client.id}: ${error.message}`);
                 client.disconnect();
@@ -145,7 +143,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
             // Determine user type from database
             const userType = user.user_type;
-            this.logger.log(`User found: ${userId}, Type: ${userType}, Active: ${user.is_active}`);
 
             if (userType === 'driver') {
                 // Handle driver connection

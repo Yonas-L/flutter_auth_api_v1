@@ -16,7 +16,7 @@ import { TripsModule } from '../trips/trips.module';
         JwtModule.registerAsync({
             inject: [ConfigService],
             useFactory: (configService: ConfigService) => ({
-                secret: configService.get('JWT_ACCESS_SECRET'),
+                secret: configService.get('JWT_ACCESS_SECRET') || configService.get('JWT_SECRET'),
                 signOptions: {
                     expiresIn: configService.get('ACCESS_EXPIRES_IN') || '15m',
                 },
