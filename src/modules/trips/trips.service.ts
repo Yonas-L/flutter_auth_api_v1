@@ -589,7 +589,7 @@ export class TripsService {
      * 1. First, broadcast to drivers with matching vehicle_type_id (if specified)
      * 2. After 1 minute, if no acceptance, expand to all vehicle types within 5km
      */
-    private async notifyAvailableDrivers(trip: any) {
+    async notifyAvailableDrivers(trip: any) {
         try {
             // Only broadcast if trip has no driver assigned (dispatcher trip)
             // Driver-initiated trips already have driver_id and should not broadcast
@@ -1267,6 +1267,27 @@ export class TripsService {
             };
 
             this.logger.log(`✅ Trip ${tripId} accepted by driver ${driverUserId}`);
+
+            // Notify passenger via socket that driver accepted
+            if (enrichedTrip.passenger_id) {
+                try {
+                    // Get driver details for notification
+                    const driverProfile = await this.driverProfilesRepository.findById(driverProfileId);
+
+                    await this.socketGateway.notifyPassengerTripAccepted(
+                        enrichedTrip.passenger_id,
+                        tripId,
+                        {
+                            driverId: driverUserId,
+                            driverName: driverProfile ? `${driverProfile.first_name} ${driverProfile.last_name}` : 'Driver'
+                        }
+                    );
+                    this.logger.log(`✅ Notified passenger ${enrichedTrip.passenger_id} of trip acceptance`);
+                } catch (notifyError) {
+                    this.logger.error(`Failed to notify passenger of trip acceptance: ${notifyError.message}`);
+                    // Don't fail the whole operation if notification fails
+                }
+            }
 
             return { success: true, trip: enrichedTrip };
 

@@ -17,7 +17,7 @@ import { TripsService } from '../trips/trips.service';
 
 interface AuthenticatedSocket extends Socket {
     userId: string;
-    userType: 'driver';
+    userType: 'driver' | 'passenger';
 }
 
 @Injectable()
@@ -32,6 +32,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private readonly logger = new Logger(SocketGateway.name);
     private readonly connectedDrivers = new Map<string, AuthenticatedSocket>();
     private readonly availableDrivers = new Map<string, AuthenticatedSocket>();
+    private readonly connectedPassengers = new Map<string, AuthenticatedSocket>();
     private readonly dashboardClients = new Map<string, Socket>();
     private readonly dashboardAdminIds = new Map<string, string>(); // Track which admin is connected to which socket
 
@@ -62,13 +63,13 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
             // Handle dashboard connections - can have optional admin authentication
             if (isDashboardConnection) {
                 this.dashboardClients.set(client.id, client);
-                
+
                 // If token is provided, extract admin user ID
                 if (token) {
                     try {
                         const payload = this.jwtService.verify(token);
                         const adminUserId = payload.sub || payload.id;
-                        
+
                         if (adminUserId) {
                             // Verify user is an admin
                             const adminUser = await this.usersRepository.findById(adminUserId);
@@ -83,7 +84,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 } else {
                     this.logger.log(`📊 Dashboard client connected without authentication: ${client.id}`);
                 }
-                
+
                 this.logger.log(`📊 Total dashboard clients: ${this.dashboardClients.size}`);
                 client.emit('dashboard:connected', {
                     message: 'Connected to dashboard',
@@ -140,29 +141,59 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 return;
             }
 
-            // Attach user info to socket
-            (client as AuthenticatedSocket).userId = userId;
-            (client as AuthenticatedSocket).userType = 'driver';
+            // Determine user type from database
+            const userType = user.user_type;
 
-            // Store connected driver
-            this.connectedDrivers.set(userId, client as AuthenticatedSocket);
+            if (userType === 'driver') {
+                // Handle driver connection
+                (client as AuthenticatedSocket).userId = userId;
+                (client as AuthenticatedSocket).userType = 'driver';
 
-            // Join driver room
-            await client.join(`driver:${userId}`);
+                // Store connected driver
+                this.connectedDrivers.set(userId, client as AuthenticatedSocket);
 
-            // Register socket id only; do NOT change online state on mere connection
-            await this.updateDriverStatus(userId, {
-                socket_id: client.id
-            });
+                // Join driver room
+                await client.join(`driver:${userId}`);
 
-            this.logger.log(`Driver ${userId} connected with socket ${client.id}`);
+                // Register socket id only; do NOT change online state on mere connection
+                await this.updateDriverStatus(userId, {
+                    socket_id: client.id
+                });
 
-            // Send connection confirmation
-            client.emit('connected', {
-                userId,
-                userType: 'driver',
-                message: 'Successfully connected to Arada Transport'
-            });
+                this.logger.log(`Driver ${userId} connected with socket ${client.id}`);
+
+                // Send connection confirmation
+                client.emit('connected', {
+                    userId,
+                    userType: 'driver',
+                    message: 'Successfully connected to Arada Transport'
+                });
+
+            } else if (userType === 'passenger') {
+                // Handle passenger connection
+                (client as AuthenticatedSocket).userId = userId;
+                (client as AuthenticatedSocket).userType = 'passenger';
+
+                // Store connected passenger
+                this.connectedPassengers.set(userId, client as AuthenticatedSocket);
+
+                // Join passenger room
+                await client.join(`passenger:${userId}`);
+
+                this.logger.log(`Passenger ${userId} connected with socket ${client.id}`);
+
+                // Send connection confirmation
+                client.emit('connected', {
+                    userId,
+                    userType: 'passenger',
+                    message: 'Successfully connected to Arada Transport'
+                });
+
+            } else {
+                this.logger.warn(`Connection rejected: Invalid user type ${userType} for ${client.id}: ${userId}`);
+                client.disconnect();
+                return;
+            }
 
         } catch (error) {
             this.logger.error(`Connection failed for ${client.id}:`, error.message);
@@ -172,29 +203,37 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     async handleDisconnect(client: Socket) {
         const authClient = client as AuthenticatedSocket;
-        
+
         // Remove dashboard client if it was one
         if (this.dashboardClients.has(client.id)) {
             this.dashboardClients.delete(client.id);
             this.dashboardAdminIds.delete(client.id);
             this.logger.log(`📊 Dashboard client disconnected: ${client.id}`);
+            return;
         }
-        
+
         if (authClient.userId) {
-            // Remove from connected drivers
-            this.connectedDrivers.delete(authClient.userId);
+            if (authClient.userType === 'driver') {
+                // Remove from connected drivers
+                this.connectedDrivers.delete(authClient.userId);
 
-            // Remove from available drivers
-            this.availableDrivers.delete(authClient.userId);
+                // Remove from available drivers
+                this.availableDrivers.delete(authClient.userId);
 
-            // Update database - set offline
-            await this.updateDriverStatus(authClient.userId, {
-                is_online: false,
-                is_available: false,
-                socket_id: null
-            });
+                // Update database - set offline
+                await this.updateDriverStatus(authClient.userId, {
+                    is_online: false,
+                    is_available: false,
+                    socket_id: null
+                });
 
-            this.logger.log(`Driver ${authClient.userId} disconnected`);
+                this.logger.log(`Driver ${authClient.userId} disconnected`);
+            } else if (authClient.userType === 'passenger') {
+                // Remove from connected passengers
+                this.connectedPassengers.delete(authClient.userId);
+
+                this.logger.log(`Passenger ${authClient.userId} disconnected`);
+            }
         }
     }
 
@@ -348,7 +387,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                     if (pickupLat && pickupLng) {
                         // Calculate distance to pickup
                         const distanceToPickup = this.calculateDistance(lat, lng, pickupLat, pickupLng);
-                        
+
                         // Calculate bearing
                         const bearing = this.calculateBearing(lat, lng, pickupLat, pickupLng);
 
@@ -420,7 +459,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
             if (result.success) {
                 this.logger.log(`✅ Support trip ${tripId} accepted by driver ${driverUserId}`);
-                
+
                 // Emit success to the accepting driver
                 client.emit('trip_support_accepted', {
                     tripId,
@@ -705,7 +744,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                 let sentToAdmin = false;
                 this.dashboardClients.forEach((dashboardClient, socketId) => {
                     const adminId = this.dashboardAdminIds.get(socketId);
-                    
+
                     // Only send to the assigned admin if we know their admin ID
                     // If admin ID matches or if we don't have admin ID tracking (fallback to all)
                     if (!adminId || adminId === flagData.assignedToAdminId) {
@@ -719,7 +758,7 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
                             assignedToAdminId: flagData.assignedToAdminId,
                             timestamp: new Date().toISOString(),
                         });
-                        
+
                         if (adminId === flagData.assignedToAdminId) {
                             sentToAdmin = true;
                         }
@@ -907,5 +946,154 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect {
         } catch (error) {
             this.logger.error(`❌ Error broadcasting ticket response added:`, error);
         }
+    }
+
+    // ==========================================
+    // Passenger Socket Event Handlers
+    // ==========================================
+
+    /**
+     * Handle passenger registration
+     * Event: 'register'
+     */
+    @SubscribeMessage('register')
+    handlePassengerRegister(
+        @ConnectedSocket() client: AuthenticatedSocket,
+        @MessageBody() data: { type: string; userId: string }
+    ) {
+        try {
+            if (data.type === 'rider' && client.userType === 'passenger') {
+                this.logger.log(`Passenger ${data.userId} registered via 'register' event`);
+                // Already handled in handleConnection, just acknowledge
+                client.emit('registered', {
+                    success: true,
+                    userId: data.userId,
+                    type: 'rider'
+                });
+            }
+        } catch (error) {
+            this.logger.error(`Error handling passenger registration:`, error);
+        }
+    }
+
+    /**
+     * Handle passenger ride request
+     * Event: 'rideRequest'
+     * This is the CRITICAL event that connects passengers to drivers
+     */
+    @SubscribeMessage('rideRequest')
+    async handleRideRequest(
+        @ConnectedSocket() client: AuthenticatedSocket,
+        @MessageBody() rideData: any
+    ) {
+        try {
+            const { userId, tripDetails, selectedVehicle } = rideData;
+
+            // Verify this is a passenger
+            if (client.userType !== 'passenger') {
+                this.logger.warn(`Non-passenger tried to request ride: ${client.userId}`);
+                client.emit('rideRequestError', { message: 'Only passengers can request rides.' });
+                return;
+            }
+
+            this.logger.log(`🚕 Passenger ${userId} requesting ride from ${tripDetails.pickup.address} to ${tripDetails.dropoff.address}`);
+
+            // Create trip in database
+            const insertTripQuery = `
+                INSERT INTO trips (
+                    passenger_id, pickup_address, pickup_latitude, pickup_longitude, 
+                    dropoff_address, dropoff_latitude, dropoff_longitude, 
+                    selected_vehicle_details, status, request_timestamp
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'requested', NOW())
+                RETURNING *;
+            `;
+            const values = [
+                userId,
+                tripDetails.pickup.address,
+                tripDetails.pickup.latitude,
+                tripDetails.pickup.longitude,
+                tripDetails.dropoff.address,
+                tripDetails.dropoff.latitude,
+                tripDetails.dropoff.longitude,
+                selectedVehicle
+            ];
+
+            const { rows } = await this.postgresService.query(insertTripQuery, values);
+            const trip = rows[0];
+
+            this.logger.log(`✅ Trip ${trip.id} created for passenger ${userId}`);
+
+            // Emit confirmation to passenger
+            client.emit('rideRequested', {
+                tripId: trip.id,
+                status: 'requested',
+                message: 'Your ride request has been received. Finding nearby drivers...'
+            });
+
+            // 🚀 CRITICAL: Broadcast to nearby drivers using existing notifyAvailableDrivers
+            // This connects passenger requests to the driver broadcast system
+            await this.tripsService.notifyAvailableDrivers(trip);
+
+            this.logger.log(`📡 Trip ${trip.id} broadcasted to nearby drivers`);
+
+        } catch (error) {
+            this.logger.error(`❌ Error handling ride request:`, error);
+            client.emit('rideRequestError', {
+                message: 'Could not process trip request. Please try again.'
+            });
+        }
+    }
+
+    /**
+     * Send trip acceptance notification to passenger
+     * Called by TripsService when driver accepts
+     */
+    async notifyPassengerTripAccepted(passengerId: string, tripId: string, driverDetails: any) {
+        try {
+            const passengerSocket = this.connectedPassengers.get(passengerId);
+            if (passengerSocket) {
+                passengerSocket.emit('rideAccepted', {
+                    tripId,
+                    driverId: driverDetails.driverId,
+                    driverDetails,
+                    message: 'Driver accepted your trip request!'
+                });
+                this.logger.log(`✅ Notified passenger ${passengerId} of trip ${tripId} acceptance`);
+            } else {
+                this.logger.warn(`⚠️  Passenger ${passengerId} not connected, cannot notify of trip acceptance`);
+            }
+        } catch (error) {
+            this.logger.error(`Error notifying passenger of trip acceptance:`, error);
+        }
+    }
+
+    /**
+     * Send trip completion notification to passenger
+     * Called by TripsService when trip is completed
+     */
+    async notifyPassengerTripCompleted(passengerId: string, tripId: string, finalFareCents: number) {
+        try {
+            const passengerSocket = this.connectedPassengers.get(passengerId);
+            if (passengerSocket) {
+                passengerSocket.emit('tripFinished', {
+                    tripId,
+                    message: 'Your trip has been completed!',
+                    fare: `${(finalFareCents / 100).toFixed(2)} ETB`
+                });
+                this.logger.log(`✅ Notified passenger ${passengerId} of trip ${tripId} completion`);
+            } else {
+                this.logger.warn(`⚠️  Passenger ${passengerId} not connected, cannot notify of trip completion`);
+            }
+        } catch (error) {
+            this.logger.error(`Error notifying passenger of trip completion:`, error);
+        }
+    }
+
+    /**
+     * Get connected passenger socket
+     */
+    getPassengerSocket(passengerId: string): AuthenticatedSocket | undefined {
+        return this.connectedPassengers.get(passengerId);
     }
 }
