@@ -284,7 +284,7 @@ export class WalletService {
         phone_number: this.formatPhoneNumberForChapa(user.phone_number || '0912345678'),
         tx_ref: chapaTransactionRef,
         callback_url: `${process.env.BASE_API_URL || 'https://flutter-auth-api-v1.onrender.com'}/api/wallet/deposit/callback`,
-        return_url: `aradatransport://wallet/payment-complete`,
+        return_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://arada-website.onrender.com'}/wallet/payment-return`,
         customization: {
           title: 'Arada Deposit',
           description: `Deposit ${depositData.amount} ETB`,
