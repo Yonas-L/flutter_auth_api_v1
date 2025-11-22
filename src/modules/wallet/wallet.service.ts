@@ -141,7 +141,7 @@ export class WalletService {
           chapa_status,
           payment_method,
           created_at,
-          updated_at
+          created_at
         FROM wallet_transactions 
         WHERE wallet_id = $1
       `;
