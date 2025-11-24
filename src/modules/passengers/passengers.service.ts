@@ -233,7 +233,7 @@ export class PassengersService {
         try {
             const query = `
                 SELECT 
-                    t.id, t.trip_reference, t.status,
+                    t.id, t.passenger_id, t.trip_reference, t.status,
                     t.pickup_address, t.pickup_latitude, t.pickup_longitude,
                     t.dropoff_address, t.dropoff_latitude, t.dropoff_longitude,
                     t.estimated_fare_cents, t.final_fare_cents,
