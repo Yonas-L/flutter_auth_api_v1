@@ -34,37 +34,57 @@ export class OtpService {
         this.logger.log(`🧹 Cleaned up ${existingCount} existing OTP(s) for ${phoneNumber} with purpose ${purpose}`);
       }
 
-      // Use AfroMessage to generate and send OTP
-      const smsResult = await this.afroMessageService.sendOtp(phoneNumber, expiresInMinutes * 60);
+      // ========== TEMPORARY BYPASS FOR TESTING ==========
+      // TODO: Remove this bypass when AfroMessage API is recharged
+      // Set BYPASS_SMS_OTP=true in environment to skip SMS sending
+      const bypassSMS = process.env.BYPASS_SMS_OTP === 'true';
 
-      if (!smsResult.success || !smsResult.code) {
-        this.logger.error(`❌ Failed to send OTP via AfroMessage: ${smsResult.error || 'No code returned'}`);
-        throw new Error(`Failed to send OTP: ${smsResult.error || 'No code returned'}`);
+      let smsResult;
+
+      if (bypassSMS) {
+        // Generate OTP locally without sending SMS
+        const code = await this.generateOtp();
+        this.logger.warn(`⚠️ BYPASS MODE: Skipping SMS send. OTP: ${code}`);
+        console.log(`🔐 BYPASS OTP CODE FOR ${phoneNumber}: ${code}`);
+        smsResult = {
+          success: true,
+          code: code,
+          verificationId: null,
+          messageId: null,
+        };
+      } else {
+        // Use AfroMessage to generate and send OTP (normal flow)
+        smsResult = await this.afroMessageService.sendOtp(phoneNumber, expiresInMinutes * 60);
+
+        if (!smsResult.success || !smsResult.code) {
+          this.logger.error(`❌ Failed to send OTP via AfroMessage: ${smsResult.error || 'No code returned'}`);
+          throw new Error(`Failed to send OTP: ${smsResult.error || 'No code returned'}`);
+        }
       }
+      // ========== END TEMPORARY BYPASS ==========
 
-      // Store the AfroMessage-generated OTP in our database
+      // Store the OTP in our database
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
 
       const otpCode = await this.otpRepository.create({
         phone_number: phoneNumber,
-        code_hash: smsResult.code, // Store the actual code from AfroMessage
+        code_hash: smsResult.code, // Store the actual code
         purpose: purpose as any,
         expires_at: expiresAt.toISOString(),
         max_attempts: 3,
-        // TODO: Add verification_id and message_id after database migration
-        // verification_id: smsResult.verificationId,
-        // message_id: smsResult.messageId,
       });
 
-      this.logger.log(`📝 OTP from AfroMessage stored in database for ${phoneNumber}, expires at ${expiresAt.toISOString()}`);
-      console.log(`🔐 AFROMESSAGE OTP CODE FOR TESTING: ${smsResult.code}`);
+      this.logger.log(`📝 OTP stored in database for ${phoneNumber}, expires at ${expiresAt.toISOString()}`);
+      if (!bypassSMS) {
+        console.log(`🔐 AFROMESSAGE OTP CODE FOR TESTING: ${smsResult.code}`);
+      }
 
       return {
         id: otpCode.id,
         key: phoneNumber,
-        code: smsResult.code, // Return the AfroMessage-generated code
-        codeHash: smsResult.code, // Store as plain text since AfroMessage handles verification
+        code: smsResult.code,
+        codeHash: smsResult.code,
         expiresAt: otpCode.expires_at,
         attempts: otpCode.attempts,
         maxAttempts: otpCode.max_attempts,
