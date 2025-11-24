@@ -15,8 +15,8 @@ export class OtpService {
   ) { }
 
   async generateOtp(): Promise<string> {
-    // Generate a 4-digit OTP to match the mobile UI (0000–9999 avoided; ensure 4 digits)
-    return Math.floor(1000 + Math.random() * 9000).toString();
+    // Generate a 6-digit OTP to match the passenger app UI
+    return Math.floor(100000 + Math.random() * 900000).toString();
   }
 
   /**
