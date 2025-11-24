@@ -67,9 +67,13 @@ export class OtpService {
       const expiresAt = new Date();
       expiresAt.setMinutes(expiresAt.getMinutes() + expiresInMinutes);
 
+      // Hash the OTP code before storing it, as PassengersService uses bcrypt.compare
+      const salt = await bcrypt.genSalt();
+      const hashedCode = await bcrypt.hash(smsResult.code.toString(), salt);
+
       const otpCode = await this.otpRepository.create({
         phone_number: phoneNumber,
-        code_hash: smsResult.code, // Store the actual code
+        code_hash: hashedCode, // Store the hashed code
         purpose: purpose as any,
         expires_at: expiresAt.toISOString(),
         max_attempts: 3,
@@ -84,7 +88,7 @@ export class OtpService {
         id: otpCode.id,
         key: phoneNumber,
         code: smsResult.code,
-        codeHash: smsResult.code,
+        codeHash: hashedCode,
         expiresAt: otpCode.expires_at,
         attempts: otpCode.attempts,
         maxAttempts: otpCode.max_attempts,
