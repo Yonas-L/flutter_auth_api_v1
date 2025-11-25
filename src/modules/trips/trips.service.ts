@@ -1275,7 +1275,7 @@ export class TripsService {
                     const driverProfile = await this.driverProfilesRepository.findById(driverProfileId);
 
                     // Get vehicle details
-                    let vehicleDetails = null;
+                    let vehicleDetails: any = null;
                     if (driverProfile?.active_vehicle_id) {
                         const vehicleQuery = 'SELECT * FROM vehicles WHERE id = $1';
                         const vehicleResult = await this.postgresService.query(vehicleQuery, [driverProfile.active_vehicle_id]);
@@ -1292,6 +1292,18 @@ export class TripsService {
                         avatarUrl = userResult.rows[0].avatar_url || '';
                     }
 
+                    // Parse location from PostGIS point format "(x,y)" or get from raw data
+                    let latitude = 0;
+                    let longitude = 0;
+                    if (driverProfile?.last_known_location) {
+                        // Try to parse PostGIS point format: "(longitude,latitude)"
+                        const match = driverProfile.last_known_location.match(/\(([^,]+),([^)]+)\)/);
+                        if (match) {
+                            longitude = parseFloat(match[1]);
+                            latitude = parseFloat(match[2]);
+                        }
+                    }
+
                     await this.socketGateway.notifyPassengerTripAccepted(
                         enrichedTrip.passenger_id,
                         tripId,
@@ -1299,14 +1311,14 @@ export class TripsService {
                             driverId: driverUserId,
                             name: driverProfile ? driverProfile.full_name || `${driverProfile.first_name} ${driverProfile.last_name}` : 'Driver',
                             phoneNumber: driverProfile?.phone_number || '',
-                            rating: driverProfile?.rating_avg ? parseFloat(driverProfile.rating_avg) : 5.0,
+                            rating: driverProfile?.rating_avg || 5.0,
                             imageUrl: avatarUrl,
                             carModel: vehicleDetails?.model || 'Vehicle',
                             carColor: vehicleDetails?.color || 'Color',
                             licensePlate: vehicleDetails?.plate_number || 'Plate',
                             location: {
-                                latitude: driverProfile?.last_known_location?.y || 0,
-                                longitude: driverProfile?.last_known_location?.x || 0
+                                latitude,
+                                longitude
                             }
                         }
                     );
