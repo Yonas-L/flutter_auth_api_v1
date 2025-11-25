@@ -55,9 +55,20 @@ export class VehicleTypesPostgresService {
         const baseFare = vehicleType.base_fare ?? (vehicleType.base_fare_cents / 100);
         const pricePerKm = vehicleType.price_per_km ?? (vehicleType.price_per_km_cents / 100);
 
-        // Convert relative image URLs to absolute URLs
-        let imageUrl = vehicleType.image_url;
-        if (imageUrl && imageUrl.startsWith('/')) {
+        // Handle image URLs
+        let imageUrl = vehicleType.image_url || '';
+
+        // If it's a Cloudinary URL (starts with http/https), use it as-is
+        if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+            // Already a full URL (Cloudinary or other), use as-is
+        }
+        // If it starts with /uploads/, it's an invalid local path - return empty to trigger fallback
+        else if (imageUrl.startsWith('/uploads/')) {
+            this.logger.warn(`Invalid local image path for vehicle type ${vehicleType.type}: ${imageUrl}`);
+            imageUrl = ''; // Empty string will trigger Flutter's fallback icon
+        }
+        // If it's any other relative path, convert to absolute URL
+        else if (imageUrl.startsWith('/')) {
             const baseUrl = process.env.BASE_URL || 'https://flutter-auth-api-v1.onrender.com';
             imageUrl = `${baseUrl}${imageUrl}`;
         }
