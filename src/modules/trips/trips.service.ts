@@ -1274,12 +1274,40 @@ export class TripsService {
                     // Get driver details for notification
                     const driverProfile = await this.driverProfilesRepository.findById(driverProfileId);
 
+                    // Get vehicle details
+                    let vehicleDetails = null;
+                    if (driverProfile?.active_vehicle_id) {
+                        const vehicleQuery = 'SELECT * FROM vehicles WHERE id = $1';
+                        const vehicleResult = await this.postgresService.query(vehicleQuery, [driverProfile.active_vehicle_id]);
+                        if (vehicleResult.rows.length > 0) {
+                            vehicleDetails = vehicleResult.rows[0];
+                        }
+                    }
+
+                    // Get user details for avatar
+                    let avatarUrl = '';
+                    const userQuery = 'SELECT avatar_url FROM users WHERE id = $1';
+                    const userResult = await this.postgresService.query(userQuery, [driverUserId]);
+                    if (userResult.rows.length > 0) {
+                        avatarUrl = userResult.rows[0].avatar_url || '';
+                    }
+
                     await this.socketGateway.notifyPassengerTripAccepted(
                         enrichedTrip.passenger_id,
                         tripId,
                         {
                             driverId: driverUserId,
-                            driverName: driverProfile ? `${driverProfile.first_name} ${driverProfile.last_name}` : 'Driver'
+                            name: driverProfile ? driverProfile.full_name || `${driverProfile.first_name} ${driverProfile.last_name}` : 'Driver',
+                            phoneNumber: driverProfile?.phone_number || '',
+                            rating: driverProfile?.rating_avg ? parseFloat(driverProfile.rating_avg) : 5.0,
+                            imageUrl: avatarUrl,
+                            carModel: vehicleDetails?.model || 'Vehicle',
+                            carColor: vehicleDetails?.color || 'Color',
+                            licensePlate: vehicleDetails?.plate_number || 'Plate',
+                            location: {
+                                latitude: driverProfile?.last_known_location?.y || 0,
+                                longitude: driverProfile?.last_known_location?.x || 0
+                            }
                         }
                     );
                     this.logger.log(`✅ Notified passenger ${enrichedTrip.passenger_id} of trip acceptance`);
