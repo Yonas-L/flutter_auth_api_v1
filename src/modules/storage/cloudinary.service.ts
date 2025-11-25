@@ -286,7 +286,8 @@ export class CloudinaryService {
                 'image/jpeg',
                 'image/jpg',
                 'image/png',
-                'image/webp'
+                'image/webp',
+                'application/octet-stream' // Generic binary, often used by mobile apps for images
             ];
 
             if (!allowedTypes.includes(file.mimetype)) {
@@ -296,11 +297,24 @@ export class CloudinaryService {
             // If an existing public_id is provided, overwrite the same asset
             // Otherwise, use a deterministic public_id per user+docType so future uploads can overwrite
             const deterministicPublicId = `uploads/${userId}/documents/${docType}`;
+
+            // Determine resource type - check file extension for octet-stream
+            let resourceType: 'image' | 'raw' = 'raw';
+            if (file.mimetype.startsWith('image/')) {
+                resourceType = 'image';
+            } else if (file.mimetype === 'application/octet-stream') {
+                // Check file extension for images
+                const ext = file.originalname.split('.').pop()?.toLowerCase();
+                if (ext && ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) {
+                    resourceType = 'image';
+                }
+            }
+
             const uploadOptions: CloudinaryUploadOptions = {
                 folder: `uploads/${userId}/documents`,
                 public_id: existingPublicId || deterministicPublicId,
-                resource_type: file.mimetype.startsWith('image/') ? 'image' : 'raw',
-                quality: file.mimetype.startsWith('image/') ? 'auto' : undefined,
+                resource_type: resourceType,
+                quality: resourceType === 'image' ? 'auto' : undefined,
             };
 
             return await this.uploadFile(file, uploadOptions);
