@@ -1273,12 +1273,13 @@ export class TripsService {
                 try {
                     // Get driver details for notification
                     const driverProfile = await this.driverProfilesRepository.findById(driverProfileId);
+                    const driverProfileAny = driverProfile as any;
 
                     // Get vehicle details
                     let vehicleDetails: any = null;
-                    if (driverProfile?.active_vehicle_id) {
+                    if (driverProfileAny?.active_vehicle_id) {
                         const vehicleQuery = 'SELECT * FROM vehicles WHERE id = $1';
-                        const vehicleResult = await this.postgresService.query(vehicleQuery, [driverProfile.active_vehicle_id]);
+                        const vehicleResult = await this.postgresService.query(vehicleQuery, [driverProfileAny.active_vehicle_id]);
                         if (vehicleResult.rows.length > 0) {
                             vehicleDetails = vehicleResult.rows[0];
                         }
@@ -1295,9 +1296,9 @@ export class TripsService {
                     // Parse location from PostGIS point format "(x,y)" or get from raw data
                     let latitude = 0;
                     let longitude = 0;
-                    if (driverProfile?.last_known_location) {
+                    if (driverProfileAny?.last_known_location) {
                         // Try to parse PostGIS point format: "(longitude,latitude)"
-                        const match = driverProfile.last_known_location.match(/\(([^,]+),([^)]+)\)/);
+                        const match = driverProfileAny.last_known_location.match(/\(([^,]+),([^)]+)\)/);
                         if (match) {
                             longitude = parseFloat(match[1]);
                             latitude = parseFloat(match[2]);
@@ -1310,7 +1311,7 @@ export class TripsService {
                         {
                             driverId: driverUserId,
                             name: driverProfile ? driverProfile.full_name || `${driverProfile.first_name} ${driverProfile.last_name}` : 'Driver',
-                            phoneNumber: driverProfile?.phone_number || '',
+                            phoneNumber: driverProfileAny?.phone_number || '',
                             rating: driverProfile?.rating_avg || 5.0,
                             imageUrl: avatarUrl,
                             carModel: vehicleDetails?.model || 'Vehicle',
